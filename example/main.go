@@ -4,13 +4,7 @@ import (
 	"fmt"
 
 	"github.com/gin-gonic/gin"
-	"github.com/juliotorresmoreno/turn/common"
 )
-
-type Context struct {
-	UUID     string
-	Response chan *common.Response
-}
 
 func main() {
 	r := gin.New()

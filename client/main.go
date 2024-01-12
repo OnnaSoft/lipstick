@@ -1,158 +1,95 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
-	"net/http"
+	"net"
 	"os"
 	"os/signal"
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/juliotorresmoreno/turn/common"
+	"github.com/juliotorresmoreno/turn/client/config"
+	"github.com/juliotorresmoreno/turn/helper"
 )
 
 var done = make(chan struct{})
-var response = make(chan *common.Response)
 var connection *websocket.Conn
+var conf, _ = config.GetConfig()
+var serverUrl = conf.ServerUrl
 
 func main() {
 	var err error
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt)
 
-	url := "ws://localhost:8081/ws"
+	for _, proxyPass := range conf.ProxyPass {
+		go func(proxyPass string) {
+			sleep := 5 * time.Second
+			for {
+				connection, _, err = websocket.DefaultDialer.Dial(serverUrl, nil)
+				if err != nil {
+					fmt.Println("Error al conectar al servidor WebSocket:", err)
+					time.Sleep(sleep)
+					continue
+				}
+				fmt.Println("Cliente WebSocket iniciado. Presiona Ctrl+C para salir.")
 
-	go func() {
-		sleep := 5 * time.Second
-		for {
-			connection, _, err = websocket.DefaultDialer.Dial(url, nil)
-			if err != nil {
-				fmt.Println("Error al conectar al servidor WebSocket:", err)
+				readRump(proxyPass)
+				done = make(chan struct{})
 				time.Sleep(sleep)
-				continue
+				connection.Close()
 			}
-			fmt.Println("Cliente WebSocket iniciado. Presiona Ctrl+C para salir.")
-
-			go writeDump()
-			readRump()
-			done = make(chan struct{})
-			time.Sleep(sleep)
-			connection.Close()
-		}
-	}()
+		}(proxyPass)
+	}
 
 	<-interrupt
 	fmt.Println("Desconectando...")
 }
 
-func readRump() {
+func readRump(proxyPass string) {
 	defer close(done)
+	defer func() {
+		recover()
+	}()
 
 	for {
 		_, message, err := connection.ReadMessage()
-		if err != nil {
-			log.Println("[00001]:", err)
+		if err == io.EOF {
 			continue
 		}
-		event := &common.Event{}
-		err = json.Unmarshal(message, event)
-		if err != nil {
-			log.Println("[00002]:", err)
-			continue
-		}
+		content := struct {
+			UUID string `json:"uuid"`
+		}{}
+		json.Unmarshal(message, &content)
 
-		url := "http://localhost:8082" + event.URL
-
-		req, err := http.NewRequest(event.Method, url, bytes.NewReader(event.Body))
-		if err != nil {
-			log.Println("[00003]:", err)
-			continue
-		}
-		for h := range event.Header {
-			req.Header.Add(h, event.Header.Get(h))
-		}
-		res, err := http.DefaultClient.Do(req)
-		if err != nil {
-			log.Println("[00004]:", err)
-			response <- &common.Response{
-				UUID:       event.UUID,
-				StatusCode: 502,
-				Header:     http.Header{},
-				Body:       []byte("Bad Gateway"),
-			}
-			continue
-		}
-
-		buff := make([]byte, 4096)
-		n, err := res.Body.Read(buff)
-		if err != nil {
-			log.Println("[00005]:", err)
-			response <- &common.Response{
-				UUID:       event.UUID,
-				StatusCode: 502,
-				Header:     res.Header,
-				Body:       []byte("Bad Gateway"),
-			}
-			continue
-		}
-
-		response <- &common.Response{
-			UUID:       event.UUID,
-			StatusCode: res.StatusCode,
-			Header:     res.Header,
-			Body:       buff[0:n],
-		}
-
-		for {
-			fmt.Println("here")
-			buff = make([]byte, 4096)
-			n, err = res.Body.Read(buff)
-			if err == io.EOF {
-				break
-			}
-			response <- &common.Response{
-				UUID: event.UUID,
-				Body: buff[0:n],
-			}
-		}
-
-		response <- &common.Response{
-			UUID: event.UUID,
-			Done: true,
+		if content.UUID != "" {
+			go connect(proxyPass, content.UUID)
 		}
 	}
 }
 
-func writeDump() {
-	ticker := time.NewTicker(60 * time.Second)
-	defer ticker.Stop()
+func connect(proxyPass, uuid string) {
+	url := serverUrl + "/" + uuid
+	fmt.Println("connect", url)
 
-	for {
-		select {
-		case <-done:
-			return
-		case t := <-ticker.C:
-			err := connection.WriteMessage(websocket.TextMessage, []byte(t.String()))
-			if err != nil {
-				fmt.Println("Error al enviar mensaje al servidor:", err)
-				return
-			}
-		case response := <-response:
-			buff, err := json.Marshal(response)
-			if err != nil {
-				continue
-			}
-			os.Stdout.Write(buff)
-			os.Stdout.Write([]byte("\n"))
-			err = connection.WriteMessage(websocket.TextMessage, buff)
-			if err != nil {
-				fmt.Println("Error al enviar mensaje al servidor:", err)
-				return
-			}
-		}
+	connection, _, err := websocket.DefaultDialer.Dial(url, nil)
+	if err != nil {
+		return
 	}
+
+	defer connection.Close()
+	defer func() {
+		recover()
+	}()
+	remote, err := net.Dial("tcp", proxyPass)
+	if err != nil {
+		return
+	}
+
+	conn := helper.NewWebSocketIO(connection)
+
+	go helper.Copy(conn, remote)
+	helper.Copy(remote, conn)
 }
