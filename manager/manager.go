@@ -40,6 +40,7 @@ type Manager struct {
 }
 
 func SetupManager() *Manager {
+	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
 
 	manager := &Manager{
