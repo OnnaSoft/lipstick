@@ -13,7 +13,7 @@ type Proxy struct {
 
 func SetupProxy(addr string) *Proxy {
 	proxy := Proxy{}
-	listener, err := net.Listen("tcp", ":8080")
+	listener, err := net.Listen("tcp", addr)
 	if err != nil {
 		log.Fatal(err)
 	}
