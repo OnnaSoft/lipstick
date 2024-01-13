@@ -1,13 +1,16 @@
 package config
 
 import (
+	"errors"
 	"flag"
 	"io"
 	"log"
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 
+	"github.com/juliotorresmoreno/kitty/helper"
 	"gopkg.in/yaml.v3"
 )
 
@@ -17,9 +20,13 @@ type Config struct {
 }
 
 var config interface{}
-var configPath string = ""
 
-func getConfigArgs() {
+func loadConfig() {
+	var configPath string = ""
+	var serverUrl string = ""
+	var proxyPass string = ""
+
+	result := Config{}
 	dir, err := filepath.Abs(filepath.Dir(os.Args[0]))
 	if err != nil {
 		log.Fatal(err)
@@ -27,13 +34,30 @@ func getConfigArgs() {
 	configPathDefault := path.Join(dir, "config.client.yml")
 	flag.StringVar(&configPath, "c", configPathDefault, "config path")
 
-	serverUrl := path.Join(dir, "ws://localhost:8081/ws")
-	flag.StringVar(&configPath, "s", serverUrl, "Manager address")
-
-	proxyPass := path.Join(dir, "127.0.0.1:8083")
-	flag.StringVar(&configPath, "p", proxyPass, "Proxy address")
+	flag.StringVar(&serverUrl, "s", "ws://localhost:8081/ws", "Manager address")
+	flag.StringVar(&proxyPass, "p", "127.0.0.1:8082", "Proxy address")
 
 	flag.Parse()
+
+	f, err := os.Open(configPath)
+	if err == nil {
+		buff, err := io.ReadAll(f)
+		if err != nil {
+			return
+		}
+		err = yaml.Unmarshal(buff, &result)
+		if err != nil {
+			return
+		}
+	}
+
+	result.ServerUrl = helper.SetValue(serverUrl, result.ServerUrl).(string)
+	proxies := strings.Split(proxyPass, " ")
+	if len(proxies) > 0 {
+		result.ProxyPass = proxies
+	}
+
+	config = result
 }
 
 func GetConfig() (Config, error) {
@@ -41,24 +65,11 @@ func GetConfig() (Config, error) {
 		return config.(Config), nil
 	}
 
-	if configPath == "" {
-		getConfigArgs()
-	}
-	result := Config{}
+	loadConfig()
 
-	f, err := os.Open(configPath)
-	if err != nil {
-		return result, err
+	if config == nil {
+		log.Fatal(errors.New("could not load config"))
 	}
-	buff, err := io.ReadAll(f)
-	if err != nil {
-		return result, err
-	}
-	err = yaml.Unmarshal(buff, &result)
-	if err != nil {
-		return result, err
-	}
-	config = result
 
 	return config.(Config), nil
 }

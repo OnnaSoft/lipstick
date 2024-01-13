@@ -24,6 +24,8 @@ func main() {
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt)
 
+	fmt.Println(serverUrl, conf.ProxyPass)
+
 	for _, proxyPass := range conf.ProxyPass {
 		go func(proxyPass string) {
 			sleep := 5 * time.Second

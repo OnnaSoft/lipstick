@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"flag"
 	"io"
 	"log"
@@ -8,6 +9,7 @@ import (
 	"path"
 	"path/filepath"
 
+	"github.com/juliotorresmoreno/kitty/helper"
 	"gopkg.in/yaml.v3"
 )
 
@@ -21,25 +23,41 @@ type Config struct {
 }
 
 var config interface{}
-var configPath string = ""
 
-func getConfigArgs() {
+func loadConfig() {
+	var configPath = ""
+	var managerAddr = ""
+	var proxyAddr = ""
+
+	result := Config{}
 	dir, err := filepath.Abs(filepath.Dir(os.Args[0]))
 	if err != nil {
 		log.Fatal(err)
 	}
+
 	configPathDefault := path.Join(dir, "config.client.yml")
 	flag.StringVar(&configPath, "c", configPathDefault, "config path")
-
-	managerAddr := ""
-	managerAddrDefault := path.Join(dir, ":8080")
-	flag.StringVar(&managerAddr, "m", managerAddrDefault, "Manager address")
-
-	proxyAddr := ""
-	proxyAddrDefault := path.Join(dir, ":8081")
-	flag.StringVar(&proxyAddr, "p", proxyAddrDefault, "Proxy address")
+	flag.StringVar(&managerAddr, "m", ":8081", "Manager address")
+	flag.StringVar(&proxyAddr, "p", ":8080", "Proxy address")
 
 	flag.Parse()
+
+	f, err := os.Open(configPath)
+	if err == nil {
+		buff, err := io.ReadAll(f)
+		if err != nil {
+			return
+		}
+		err = yaml.Unmarshal(buff, &result)
+		if err != nil {
+			return
+		}
+	}
+
+	result.Proxy.Addr = helper.SetValue(proxyAddr, result.Proxy.Addr).(string)
+	result.Manager.Addr = helper.SetValue(managerAddr, result.Manager.Addr).(string)
+
+	config = result
 }
 
 func GetConfig() (Config, error) {
@@ -47,24 +65,11 @@ func GetConfig() (Config, error) {
 		return config.(Config), nil
 	}
 
-	if configPath == "" {
-		getConfigArgs()
-	}
-	result := Config{}
+	loadConfig()
 
-	f, err := os.Open(configPath)
-	if err != nil {
-		return result, err
+	if config == nil {
+		log.Fatal(errors.New("could not load config"))
 	}
-	buff, err := io.ReadAll(f)
-	if err != nil {
-		return result, err
-	}
-	err = yaml.Unmarshal(buff, &result)
-	if err != nil {
-		return result, err
-	}
-	config = result
 
 	return config.(Config), nil
 }
