@@ -1,2 +1,5 @@
 http
 *.yml
+*.deb
+bin/*
+

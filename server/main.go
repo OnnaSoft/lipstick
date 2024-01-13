@@ -10,17 +10,29 @@ import (
 	"github.com/juliotorresmoreno/turn/server/config"
 )
 
-var conf, _ = config.GetConfig()
-
 func main() {
+	var conf, _ = config.GetConfig()
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt)
 
-	proxy := proxy.SetupProxy(conf.Proxy.Addr)
+	proxyAddr := conf.Proxy.Addr
+	managerAddr := conf.Manager.Addr
+
+	Listen(managerAddr, proxyAddr)
+
+	<-interrupt
+	fmt.Println("Desconectando...")
+}
+
+func Listen(managerAddr, proxyAddr string) {
+	interrupt := make(chan os.Signal, 1)
+	signal.Notify(interrupt, os.Interrupt)
+
+	proxy := proxy.SetupProxy(proxyAddr)
 	manager := manager.SetupManager()
 
 	go manager.Manage()
-	go manager.Listen(conf.Manager.Addr)
+	go manager.Listen(managerAddr)
 	go manager.Forward()
 	go proxy.Listen(manager)
 

@@ -26,6 +26,13 @@ func getConfigArgs() {
 	}
 	configPathDefault := path.Join(dir, "config.client.yml")
 	flag.StringVar(&configPath, "c", configPathDefault, "config path")
+
+	serverUrl := path.Join(dir, "ws://localhost:8081/ws")
+	flag.StringVar(&configPath, "s", serverUrl, "Manager address")
+
+	proxyPass := path.Join(dir, "127.0.0.1:8083")
+	flag.StringVar(&configPath, "p", proxyPass, "Proxy address")
+
 	flag.Parse()
 }
 

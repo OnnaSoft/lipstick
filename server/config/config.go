@@ -30,6 +30,15 @@ func getConfigArgs() {
 	}
 	configPathDefault := path.Join(dir, "config.client.yml")
 	flag.StringVar(&configPath, "c", configPathDefault, "config path")
+
+	managerAddr := ""
+	managerAddrDefault := path.Join(dir, ":8080")
+	flag.StringVar(&managerAddr, "m", managerAddrDefault, "Manager address")
+
+	proxyAddr := ""
+	proxyAddrDefault := path.Join(dir, ":8081")
+	flag.StringVar(&proxyAddr, "p", proxyAddrDefault, "Proxy address")
+
 	flag.Parse()
 }
 

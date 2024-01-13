@@ -1,8 +1,0 @@
-Package: pitty
-Version: 0.0.1
-Section: utils
-Priority: optional
-Architecture: amd64
-Maintainer: Julio Torres <jtorres990@gmail.com>
-Description: Share ports
-Filename: pitty_0.0.1_amd64.deb
