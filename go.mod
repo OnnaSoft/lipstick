@@ -1,4 +1,4 @@
-module github.com/juliotorresmoreno/kitty
+module github.com/juliotorresmoreno/lipstick
 
 go 1.21.5
 

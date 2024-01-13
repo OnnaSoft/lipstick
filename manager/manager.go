@@ -8,7 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
-	"github.com/juliotorresmoreno/kitty/helper"
+	"github.com/juliotorresmoreno/lipstick/helper"
 )
 
 var upgrader = websocket.Upgrader{
@@ -103,7 +103,6 @@ func (manager *Manager) Forward() {
 }
 
 func (manager *Manager) Manage() {
-	fmt.Println("manager")
 	for {
 		select {
 		case ws := <-manager.registerWs:
@@ -114,10 +113,18 @@ func (manager *Manager) Manage() {
 			dest := helper.NewWebSocketIO(channel.Conn)
 			pipe := manager.pipes[channel.uuid]
 
-			go helper.Copy(pipe, dest)
-			go helper.Copy(dest, pipe)
+			go func() {
+				go helper.Copy(pipe, dest)
+
+				defer func() {
+					manager.unregisterChain <- channel.uuid
+				}()
+
+				helper.Copy(dest, pipe)
+			}()
 		case channel := <-manager.unregisterChain:
 			delete(manager.channels, channel)
+			delete(manager.pipes, channel)
 		case pipe := <-manager.Pipe:
 			ticket := uuid.NewString()
 			if ws := manager.ws; ws != nil {

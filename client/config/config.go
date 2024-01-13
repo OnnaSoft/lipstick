@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/juliotorresmoreno/kitty/helper"
+	"github.com/juliotorresmoreno/lipstick/helper"
 	"gopkg.in/yaml.v3"
 )
 
@@ -34,8 +34,8 @@ func loadConfig() {
 	configPathDefault := path.Join(dir, "config.client.yml")
 	flag.StringVar(&configPath, "c", configPathDefault, "config path")
 
-	flag.StringVar(&serverUrl, "s", "ws://localhost:8081/ws", "Manager address")
-	flag.StringVar(&proxyPass, "p", "127.0.0.1:8082", "Proxy address")
+	flag.StringVar(&serverUrl, "s", "ws://localhost:8081/ws", "Where you are listening your server manager port")
+	flag.StringVar(&proxyPass, "p", "127.0.0.1:8082", "Host/port where you want connect from the remote server")
 
 	flag.Parse()
 

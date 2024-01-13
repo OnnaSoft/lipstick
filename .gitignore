@@ -1,5 +1,7 @@
 http
-*.yml
 *.deb
 bin/*
+
+config.client.yml
+config.server.yml
 

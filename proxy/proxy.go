@@ -4,7 +4,7 @@ import (
 	"log"
 	"net"
 
-	"github.com/juliotorresmoreno/kitty/manager"
+	"github.com/juliotorresmoreno/lipstick/manager"
 )
 
 type Proxy struct {

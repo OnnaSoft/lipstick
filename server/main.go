@@ -5,9 +5,9 @@ import (
 	"os"
 	"os/signal"
 
-	"github.com/juliotorresmoreno/kitty/manager"
-	"github.com/juliotorresmoreno/kitty/proxy"
-	"github.com/juliotorresmoreno/kitty/server/config"
+	"github.com/juliotorresmoreno/lipstick/manager"
+	"github.com/juliotorresmoreno/lipstick/proxy"
+	"github.com/juliotorresmoreno/lipstick/server/config"
 )
 
 func main() {

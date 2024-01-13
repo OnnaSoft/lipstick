@@ -9,7 +9,7 @@ import (
 	"path"
 	"path/filepath"
 
-	"github.com/juliotorresmoreno/kitty/helper"
+	"github.com/juliotorresmoreno/lipstick/helper"
 	"gopkg.in/yaml.v3"
 )
 
@@ -37,8 +37,8 @@ func loadConfig() {
 
 	configPathDefault := path.Join(dir, "config.client.yml")
 	flag.StringVar(&configPath, "c", configPathDefault, "config path")
-	flag.StringVar(&managerAddr, "m", ":8081", "Manager address")
-	flag.StringVar(&proxyAddr, "p", ":8080", "Proxy address")
+	flag.StringVar(&managerAddr, "m", ":8081", "Port where your client will connect via websocket. You can manage it in your firewall")
+	flag.StringVar(&proxyAddr, "p", ":8080", "Port where you will get all requests from local network or internet")
 
 	flag.Parse()
 
