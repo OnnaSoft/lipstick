@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/juliotorresmoreno/turn/client/config"
-	"github.com/juliotorresmoreno/turn/helper"
+	"github.com/juliotorresmoreno/kitty/client/config"
+	"github.com/juliotorresmoreno/kitty/helper"
 )
 
 var done = make(chan struct{})

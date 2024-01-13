@@ -1,4 +1,4 @@
-module github.com/juliotorresmoreno/turn
+module github.com/juliotorresmoreno/kitty
 
 go 1.21.5
 

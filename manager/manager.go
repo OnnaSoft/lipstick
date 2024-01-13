@@ -8,7 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
-	"github.com/juliotorresmoreno/turn/helper"
+	"github.com/juliotorresmoreno/kitty/helper"
 )
 
 var upgrader = websocket.Upgrader{
