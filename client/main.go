@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"os"
 	"os/signal"
@@ -72,6 +73,23 @@ func readRump(proxyPass string) {
 	}
 }
 
+var badGatewayHeader = `HTTP/1.1 502 Bad Gateway
+Content-Type: text/html
+Content-Length: `
+
+var badGatewayContent = `<!DOCTYPE html>
+<html>
+<head>
+    <title>502 Bad Gateway</title>
+</head>
+<body>
+    <h1>Bad Gateway</h1>
+    <p>The server encountered a temporary error and could not complete your request.</p>
+</body>
+</html>`
+
+var badGatewayResponse = badGatewayHeader + fmt.Sprint(len(badGatewayContent)) + "\n\n" + badGatewayContent
+
 func connect(proxyPass, uuid string) {
 	url := serverUrl + "/" + uuid
 	fmt.Println("connect", url)
@@ -85,12 +103,13 @@ func connect(proxyPass, uuid string) {
 	defer func() {
 		recover()
 	}()
+	conn := helper.NewWebSocketIO(connection)
 	remote, err := net.Dial("tcp", proxyPass)
 	if err != nil {
+		log.Println("remote host is not available")
+		fmt.Fprint(conn, badGatewayResponse)
 		return
 	}
-
-	conn := helper.NewWebSocketIO(connection)
 
 	go helper.Copy(conn, remote)
 	helper.Copy(remote, conn)

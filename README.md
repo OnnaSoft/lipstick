@@ -51,3 +51,8 @@ Usage of lipstick-client:
   -s string
     	Where you are listening your server manager port (default "ws://localhost:8081/ws")
 ```
+
+## Run client on docker
+```bash
+docker run --entrypoint /lipstick/lipstick-client --name lipstick-client --network host --restart always -dt lipstick -s wss://juliotorres.digital/lipstick/ws
+```
