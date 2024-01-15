@@ -99,15 +99,14 @@ func (manager *Manager) Forward() {
 		}
 		fmt.Println("Client connect from", ws.RemoteAddr().String())
 		manager.registerWs <- ws
-
 	}
 }
 
 func (manager *Manager) Manage() {
 	for {
 		select {
-		case ws := <-manager.registerWs:
-			manager.ws = ws
+		case conn := <-manager.registerWs:
+			manager.ws = conn
 		case channel := <-manager.registerChain:
 			manager.channels[channel.uuid] = channel.Conn
 

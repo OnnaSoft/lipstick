@@ -16,12 +16,10 @@ import (
 )
 
 var done = make(chan struct{})
-var connection *websocket.Conn
 var conf, _ = config.GetConfig()
 var serverUrl = conf.ServerUrl
 
 func main() {
-	var err error
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt)
 
@@ -29,9 +27,9 @@ func main() {
 
 	for _, proxyPass := range conf.ProxyPass {
 		go func(proxyPass string) {
-			sleep := 5 * time.Second
+			sleep := 3 * time.Second
 			for {
-				connection, _, err = websocket.DefaultDialer.Dial(serverUrl, nil)
+				connection, _, err := websocket.DefaultDialer.Dial(serverUrl, nil)
 				if err != nil {
 					fmt.Println("Error al conectar al servidor WebSocket:", err)
 					time.Sleep(sleep)
@@ -39,7 +37,8 @@ func main() {
 				}
 				fmt.Println("Cliente WebSocket iniciado. Presiona Ctrl+C para salir.")
 
-				readRump(proxyPass)
+				go ping(connection)
+				readRump(connection, proxyPass)
 				done = make(chan struct{})
 				time.Sleep(sleep)
 				connection.Close()
@@ -51,7 +50,17 @@ func main() {
 	fmt.Println("Desconectando...")
 }
 
-func readRump(proxyPass string) {
+func ping(connection *websocket.Conn) {
+	for {
+		time.Sleep(60 * time.Second)
+		err := connection.WriteMessage(websocket.PingMessage, nil)
+		if err != nil {
+			break
+		}
+	}
+}
+
+func readRump(connection *websocket.Conn, proxyPass string) {
 	defer close(done)
 	defer func() {
 		recover()

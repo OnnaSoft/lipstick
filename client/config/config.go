@@ -35,7 +35,7 @@ func loadConfig() {
 	flag.StringVar(&configPath, "c", configPathDefault, "config path")
 
 	flag.StringVar(&serverUrl, "s", "ws://localhost:8081/ws", "Where you are listening your server manager port")
-	flag.StringVar(&proxyPass, "p", "127.0.0.1:8082", "Host/port where you want connect from the remote server")
+	flag.StringVar(&proxyPass, "p", "127.0.0.1:12000", "Host/port where you want connect from the remote server")
 
 	flag.Parse()
 

@@ -10,6 +10,8 @@ func main() {
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
 
+	r.Use(gin.Logger())
+
 	r.GET("/", func(ctx *gin.Context) {
 		ctx.Status(200)
 		fmt.Fprint(ctx.Writer, "hello")
@@ -17,5 +19,5 @@ func main() {
 		fmt.Fprint(ctx.Writer, "world")
 	})
 
-	r.Run(":8082")
+	r.Run(":12000")
 }

@@ -5,7 +5,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: lipstick
+    image: jliotorresmoreno/lipstick:latest
     entrypoint: /entrypoint.sh
     command: [ "client" ]
     network_mode: host
