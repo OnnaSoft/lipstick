@@ -1,7 +1,9 @@
 package manager
 
 import (
+	"errors"
 	"fmt"
+	"log"
 	"net"
 	"net/http"
 
@@ -39,7 +41,7 @@ type Manager struct {
 	wsChain         chan wsChain
 }
 
-func SetupManager() *Manager {
+func SetupManager(keyword string) *Manager {
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
 
@@ -56,6 +58,10 @@ func SetupManager() *Manager {
 
 	r.GET("/ws", func(c *gin.Context) {
 		conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
+		if keyword != c.Query("keyword") {
+			err = errors.New("Unauthorized")
+		}
+
 		manager.wsChain <- wsChain{conn, err}
 	})
 
@@ -79,6 +85,7 @@ func SetupManager() *Manager {
 
 // Listening port
 func (manager *Manager) Listen(addr string) {
+	log.Println("Listening on", addr)
 	manager.engine.Run(addr)
 }
 
@@ -94,7 +101,8 @@ func (manager *Manager) Forward() {
 	for {
 		ws, err := manager.Accept()
 		if err != nil {
-			fmt.Println(err)
+			ws.Close()
+			log.Println(err)
 			continue
 		}
 		fmt.Println("Client connect from", ws.RemoteAddr().String())

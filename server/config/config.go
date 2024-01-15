@@ -14,7 +14,8 @@ import (
 )
 
 type Config struct {
-	Proxy struct {
+	Keyword string `yaml:"keyword"`
+	Proxy   struct {
 		Addr string `yaml:"addr"`
 	} `yaml:"proxy"`
 	Manager struct {
@@ -28,6 +29,7 @@ func loadConfig() {
 	var configPath = ""
 	var managerAddr = ""
 	var proxyAddr = ""
+	var secret = ""
 
 	result := Config{}
 	dir, err := filepath.Abs(filepath.Dir(os.Args[0]))
@@ -39,6 +41,7 @@ func loadConfig() {
 	flag.StringVar(&configPath, "c", configPathDefault, "config path")
 	flag.StringVar(&managerAddr, "m", ":8081", "Port where your client will connect via websocket. You can manage it in your firewall")
 	flag.StringVar(&proxyAddr, "p", ":8080", "Port where you will get all requests from local network or internet")
+	flag.StringVar(&secret, "k", "", "Private secret use to autenticate nodes")
 
 	flag.Parse()
 
@@ -56,6 +59,7 @@ func loadConfig() {
 
 	result.Proxy.Addr = helper.SetValue(proxyAddr, result.Proxy.Addr).(string)
 	result.Manager.Addr = helper.SetValue(managerAddr, result.Manager.Addr).(string)
+	result.Keyword = helper.SetValue(secret, result.Keyword).(string)
 
 	config = result
 }

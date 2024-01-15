@@ -18,18 +18,18 @@ func main() {
 	proxyAddr := conf.Proxy.Addr
 	managerAddr := conf.Manager.Addr
 
-	Listen(managerAddr, proxyAddr)
+	Listen(managerAddr, proxyAddr, conf.Keyword)
 
 	<-interrupt
 	fmt.Println("Desconectando...")
 }
 
-func Listen(managerAddr, proxyAddr string) {
+func Listen(managerAddr, proxyAddr string, keyword string) {
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt)
 
 	proxy := proxy.SetupProxy(proxyAddr)
-	manager := manager.SetupManager()
+	manager := manager.SetupManager(keyword)
 
 	go manager.Manage()
 	go manager.Listen(managerAddr)

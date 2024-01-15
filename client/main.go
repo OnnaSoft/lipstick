@@ -29,7 +29,8 @@ func main() {
 		go func(proxyPass string) {
 			sleep := 3 * time.Second
 			for {
-				connection, _, err := websocket.DefaultDialer.Dial(serverUrl, nil)
+				url := serverUrl + "?keyword=" + conf.Keyword
+				connection, _, err := websocket.DefaultDialer.Dial(url, nil)
 				if err != nil {
 					fmt.Println("Error al conectar al servidor WebSocket:", err)
 					time.Sleep(sleep)
