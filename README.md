@@ -54,7 +54,7 @@ Usage of lipstick-client:
 
 ## Run client on docker
 ```bash
-docker run --entrypoint /lipstick/lipstick-client --name lipstick-client --network host --restart always -dt jliotorresmoreno/lipstick -s wss://juliotorres.digital/lipstick/ws -k 123456
+docker run --entrypoint /lipstick/lipstick-client --name lipstick-client --network host --restart always -dt jliotorresmoreno/lipstick -s wss://example.com/ws -k 123456
 ```
 
 ## Run server on docker
