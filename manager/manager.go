@@ -32,7 +32,7 @@ type registerChain struct {
 type Manager struct {
 	Pipe            chan net.Conn
 	engine          *gin.Engine
-	ws              *websocket.Conn
+	remoteConn      *websocket.Conn
 	registerWs      chan *websocket.Conn
 	registerChain   chan *registerChain
 	unregisterChain chan string
@@ -57,12 +57,12 @@ func SetupManager(keyword string) *Manager {
 	}
 
 	r.GET("/ws", func(c *gin.Context) {
-		conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
-		if keyword != c.Query("keyword") {
+		remoteConn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
+		if keyword != c.GetHeader("authorization") {
 			err = errors.New("Unauthorized")
 		}
 
-		manager.wsChain <- wsChain{conn, err}
+		manager.wsChain <- wsChain{remoteConn, err}
 	})
 
 	r.GET("/ws/:uuid", func(c *gin.Context) {
@@ -76,7 +76,6 @@ func SetupManager(keyword string) *Manager {
 		if !ok {
 			return
 		}
-		fmt.Println("connecting to", uuid)
 		manager.registerChain <- &registerChain{uuid: uuid, Conn: conn}
 	})
 
@@ -99,14 +98,13 @@ func (manager *Manager) Accept() (*websocket.Conn, error) {
 // here you can accept new websocket client
 func (manager *Manager) Forward() {
 	for {
-		ws, err := manager.Accept()
+		remoteConn, err := manager.Accept()
 		if err != nil {
-			ws.Close()
 			log.Println(err)
+			remoteConn.Close()
 			continue
 		}
-		fmt.Println("Client connect from", ws.RemoteAddr().String())
-		manager.registerWs <- ws
+		manager.registerWs <- remoteConn
 	}
 }
 
@@ -114,7 +112,7 @@ func (manager *Manager) Manage() {
 	for {
 		select {
 		case conn := <-manager.registerWs:
-			manager.ws = conn
+			manager.remoteConn = conn
 		case channel := <-manager.registerChain:
 			manager.channels[channel.uuid] = channel.Conn
 
@@ -131,11 +129,13 @@ func (manager *Manager) Manage() {
 				helper.Copy(dest, pipe)
 			}()
 		case channel := <-manager.unregisterChain:
+			manager.channels[channel].Close()
+			manager.pipes[channel].Close()
 			delete(manager.channels, channel)
 			delete(manager.pipes, channel)
 		case pipe := <-manager.Pipe:
 			ticket := uuid.NewString()
-			if ws := manager.ws; ws != nil {
+			if ws := manager.remoteConn; ws != nil {
 				ws.WriteJSON(map[string]string{"uuid": ticket})
 				manager.pipes[ticket] = pipe
 			}

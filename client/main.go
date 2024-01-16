@@ -53,7 +53,7 @@ func main() {
 
 func ping(connection *websocket.Conn) {
 	for {
-		time.Sleep(60 * time.Second)
+		time.Sleep(30 * time.Second)
 		err := connection.WriteMessage(websocket.PingMessage, nil)
 		if err != nil {
 			break
@@ -102,7 +102,6 @@ var badGatewayResponse = badGatewayHeader + fmt.Sprint(len(badGatewayContent)) +
 
 func connect(proxyPass, uuid string) {
 	url := serverUrl + "/" + uuid
-	fmt.Println("connect", url)
 
 	connection, _, err := websocket.DefaultDialer.Dial(url, nil)
 	if err != nil {
@@ -120,6 +119,7 @@ func connect(proxyPass, uuid string) {
 		fmt.Fprint(conn, badGatewayResponse)
 		return
 	}
+	defer remote.Close()
 
 	go helper.Copy(conn, remote)
 	helper.Copy(remote, conn)
