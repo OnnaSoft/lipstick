@@ -3,8 +3,6 @@ package proxy
 import (
 	"log"
 	"net"
-
-	"github.com/juliotorresmoreno/lipstick/manager"
 )
 
 type Proxy struct {
@@ -22,13 +20,13 @@ func SetupProxy(addr string) *Proxy {
 	return &proxy
 }
 
-func (proxy *Proxy) Listen(manager *manager.Manager) {
+func (proxy *Proxy) Listen(manager chan net.Conn) {
 	for {
 		conn, err := proxy.listener.Accept()
 		if err != nil {
 			log.Println(err)
 			continue
 		}
-		manager.Pipe <- conn
+		manager <- conn
 	}
 }

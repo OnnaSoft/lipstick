@@ -29,16 +29,34 @@ type registerChain struct {
 	uuid string
 }
 
+var badGatewayHeader = `HTTP/1.1 502 Bad Gateway
+Content-Type: text/html
+Content-Length: `
+
+var badGatewayContent = `<!DOCTYPE html>
+<html>
+<head>
+    <title>502 Bad Gateway</title>
+</head>
+<body>
+    <h1>Bad Gateway</h1>
+    <p>The server encountered a temporary error and could not complete your request.</p>
+</body>
+</html>`
+
+var badGatewayResponse = badGatewayHeader + fmt.Sprint(len(badGatewayContent)) + "\n\n" + badGatewayContent
+
 type Manager struct {
-	Pipe            chan net.Conn
-	engine          *gin.Engine
-	remoteConn      *websocket.Conn
-	registerWs      chan *websocket.Conn
-	registerChain   chan *registerChain
-	unregisterChain chan string
-	pipes           map[string]net.Conn
-	channels        map[string]*websocket.Conn
-	wsChain         chan wsChain
+	Pipe                 chan net.Conn
+	engine               *gin.Engine
+	remoteConn           *websocket.Conn
+	registerRemoteConn   chan *websocket.Conn
+	unregisterRemoteConn chan struct{}
+	registerChain        chan *registerChain
+	unregisterChain      chan string
+	pipes                map[string]net.Conn
+	channels             map[string]*websocket.Conn
+	wsChain              chan wsChain
 }
 
 func SetupManager(keyword string) *Manager {
@@ -46,14 +64,15 @@ func SetupManager(keyword string) *Manager {
 	r := gin.New()
 
 	manager := &Manager{
-		engine:          r,
-		pipes:           make(map[string]net.Conn),
-		channels:        make(map[string]*websocket.Conn),
-		wsChain:         make(chan wsChain),
-		registerWs:      make(chan *websocket.Conn),
-		registerChain:   make(chan *registerChain),
-		unregisterChain: make(chan string),
-		Pipe:            make(chan net.Conn),
+		engine:               r,
+		pipes:                make(map[string]net.Conn),
+		channels:             make(map[string]*websocket.Conn),
+		wsChain:              make(chan wsChain),
+		registerRemoteConn:   make(chan *websocket.Conn),
+		unregisterRemoteConn: make(chan struct{}),
+		registerChain:        make(chan *registerChain),
+		unregisterChain:      make(chan string),
+		Pipe:                 make(chan net.Conn),
 	}
 
 	r.GET("/ws", func(c *gin.Context) {
@@ -104,15 +123,27 @@ func (manager *Manager) Forward() {
 			remoteConn.Close()
 			continue
 		}
-		manager.registerWs <- remoteConn
+		manager.registerRemoteConn <- remoteConn
 	}
 }
 
 func (manager *Manager) Manage() {
 	for {
 		select {
-		case conn := <-manager.registerWs:
+		case conn := <-manager.registerRemoteConn:
 			manager.remoteConn = conn
+			go func() {
+				for {
+					_, _, err := conn.ReadMessage()
+					if err != nil {
+						manager.unregisterRemoteConn <- struct{}{}
+						break
+					}
+				}
+			}()
+		case <-manager.unregisterRemoteConn:
+			manager.remoteConn.Close()
+			manager.remoteConn = nil
 		case channel := <-manager.registerChain:
 			manager.channels[channel.uuid] = channel.Conn
 
@@ -138,6 +169,8 @@ func (manager *Manager) Manage() {
 			if ws := manager.remoteConn; ws != nil {
 				ws.WriteJSON(map[string]string{"uuid": ticket})
 				manager.pipes[ticket] = pipe
+			} else {
+				fmt.Fprint(pipe, badGatewayResponse)
 			}
 		}
 	}

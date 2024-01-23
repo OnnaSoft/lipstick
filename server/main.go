@@ -34,7 +34,7 @@ func Listen(managerAddr, proxyAddr string, keyword string) {
 	go manager.Manage()
 	go manager.Listen(managerAddr)
 	go manager.Forward()
-	go proxy.Listen(manager)
+	go proxy.Listen(manager.Pipe)
 
 	<-interrupt
 	fmt.Println("Desconectando...")
