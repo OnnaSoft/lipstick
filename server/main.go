@@ -31,9 +31,7 @@ func Listen(managerAddr, proxyAddr string, keyword string) {
 	proxy := proxy.SetupProxy(proxyAddr)
 	manager := manager.SetupManager(keyword)
 
-	go manager.Manage()
 	go manager.Listen(managerAddr)
-	go manager.Forward()
 	go proxy.Listen(manager.Pipe)
 
 	<-interrupt

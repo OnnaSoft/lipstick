@@ -17,6 +17,10 @@ func NewWebSocketIO(conn *websocket.Conn) *WebSocketIO {
 	return &WebSocketIO{conn: conn}
 }
 
+func (w *WebSocketIO) Close() (err error) {
+	return w.conn.Close()
+}
+
 func (w *WebSocketIO) Write(p []byte) (n int, err error) {
 	err = w.conn.WriteMessage(websocket.TextMessage, p)
 	if err != nil {

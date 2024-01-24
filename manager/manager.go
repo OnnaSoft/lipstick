@@ -19,13 +19,8 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
-type wsChain struct {
-	Conn *websocket.Conn
-	err  error
-}
-
 type registerChain struct {
-	Conn *websocket.Conn
+	conn *websocket.Conn
 	uuid string
 }
 
@@ -53,10 +48,7 @@ type Manager struct {
 	registerRemoteConn   chan *websocket.Conn
 	unregisterRemoteConn chan struct{}
 	registerRequest      chan *registerChain
-	unregisterRequest    chan string
 	pipes                map[string]net.Conn
-	channels             map[string]*websocket.Conn
-	wsChain              chan wsChain
 }
 
 func SetupManager(keyword string) *Manager {
@@ -66,12 +58,9 @@ func SetupManager(keyword string) *Manager {
 	manager := &Manager{
 		engine:               r,
 		pipes:                make(map[string]net.Conn),
-		channels:             make(map[string]*websocket.Conn),
-		wsChain:              make(chan wsChain),
 		registerRemoteConn:   make(chan *websocket.Conn),
 		unregisterRemoteConn: make(chan struct{}),
 		registerRequest:      make(chan *registerChain),
-		unregisterRequest:    make(chan string),
 		Pipe:                 make(chan net.Conn),
 	}
 
@@ -81,7 +70,12 @@ func SetupManager(keyword string) *Manager {
 			err = errors.New("Unauthorized")
 		}
 
-		manager.wsChain <- wsChain{remoteConn, err}
+		if err != nil {
+			log.Println(err)
+			remoteConn.Close()
+			return
+		}
+		manager.registerRemoteConn <- remoteConn
 	})
 
 	r.GET("/ws/:uuid", func(c *gin.Context) {
@@ -95,36 +89,19 @@ func SetupManager(keyword string) *Manager {
 		if !ok {
 			return
 		}
-		manager.registerRequest <- &registerChain{uuid: uuid, Conn: conn}
+		manager.registerRequest <- &registerChain{uuid: uuid, conn: conn}
 	})
 
 	return manager
 }
 
-// Listening port
 func (manager *Manager) Listen(addr string) {
 	log.Println("Listening on", addr)
+
+	done := make(chan struct{})
+	go manager.manage(done)
 	manager.engine.Run(addr)
-}
-
-// get ws con to manage
-func (manager *Manager) Accept() (*websocket.Conn, error) {
-	wsChain := <-manager.wsChain
-
-	return wsChain.Conn, wsChain.err
-}
-
-// here you can accept new websocket client
-func (manager *Manager) Forward() {
-	for {
-		remoteConn, err := manager.Accept()
-		if err != nil {
-			log.Println(err)
-			remoteConn.Close()
-			continue
-		}
-		manager.registerRemoteConn <- remoteConn
-	}
+	done <- struct{}{}
 }
 
 func (manager *Manager) alive(conn *websocket.Conn) {
@@ -138,14 +115,15 @@ func (manager *Manager) alive(conn *websocket.Conn) {
 
 func (manager *Manager) handle(uuid string, dest *helper.WebSocketIO, pipe net.Conn) {
 	defer func() {
-		manager.unregisterRequest <- uuid
+		dest.Close()
+		pipe.Close()
 	}()
 
 	go helper.Copy(pipe, dest)
 	helper.Copy(dest, pipe)
 }
 
-func (manager *Manager) Manage() {
+func (manager *Manager) manage(done chan struct{}) {
 	for {
 		select {
 		case conn := <-manager.registerRemoteConn:
@@ -157,16 +135,11 @@ func (manager *Manager) Manage() {
 		case <-manager.unregisterRemoteConn:
 			manager.remoteConn.Close()
 			manager.remoteConn = nil
-		case channel := <-manager.registerRequest:
-			manager.channels[channel.uuid] = channel.Conn
-			dest := helper.NewWebSocketIO(channel.Conn)
-			pipe := manager.pipes[channel.uuid]
-			go manager.handle(channel.uuid, dest, pipe)
-		case channel := <-manager.unregisterRequest:
-			manager.channels[channel].Close()
-			manager.pipes[channel].Close()
-			delete(manager.channels, channel)
-			delete(manager.pipes, channel)
+		case request := <-manager.registerRequest:
+			dest := helper.NewWebSocketIO(request.conn)
+			pipe := manager.pipes[request.uuid]
+			delete(manager.pipes, request.uuid)
+			go manager.handle(request.uuid, dest, pipe)
 		case pipe := <-manager.Pipe:
 			ticket := uuid.NewString()
 			remoteConn := manager.remoteConn
@@ -177,6 +150,8 @@ func (manager *Manager) Manage() {
 			}
 			remoteConn.WriteJSON(map[string]string{"uuid": ticket})
 			manager.pipes[ticket] = pipe
+		case <-done:
+			return
 		}
 	}
 }
