@@ -29,10 +29,9 @@ func Listen(managerAddr, proxyAddr string, keyword string) {
 	signal.Notify(interrupt, os.Interrupt)
 
 	proxy := proxy.SetupProxy(proxyAddr)
-	manager := manager.SetupManager(keyword)
+	manager := manager.SetupManager(keyword, proxy)
 
 	go manager.Listen(managerAddr)
-	go proxy.Listen(manager.Pipe)
 
 	<-interrupt
 	fmt.Println("Desconectando...")

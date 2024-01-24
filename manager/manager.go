@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/juliotorresmoreno/lipstick/helper"
+	"github.com/juliotorresmoreno/lipstick/proxy"
 )
 
 var upgrader = websocket.Upgrader{
@@ -19,7 +20,7 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
-type registerChain struct {
+type request struct {
 	conn *websocket.Conn
 	uuid string
 }
@@ -42,16 +43,17 @@ var badGatewayContent = `<!DOCTYPE html>
 var badGatewayResponse = badGatewayHeader + fmt.Sprint(len(badGatewayContent)) + "\n\n" + badGatewayContent
 
 type Manager struct {
-	Pipe                 chan net.Conn
+	pipe                 chan net.Conn
 	engine               *gin.Engine
 	remoteConn           *websocket.Conn
+	pipes                map[string]net.Conn
 	registerRemoteConn   chan *websocket.Conn
 	unregisterRemoteConn chan struct{}
-	registerRequest      chan *registerChain
-	pipes                map[string]net.Conn
+	request              chan *request
+	proxy                *proxy.Proxy
 }
 
-func SetupManager(keyword string) *Manager {
+func SetupManager(keyword string, proxy *proxy.Proxy) *Manager {
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
 
@@ -60,8 +62,10 @@ func SetupManager(keyword string) *Manager {
 		pipes:                make(map[string]net.Conn),
 		registerRemoteConn:   make(chan *websocket.Conn),
 		unregisterRemoteConn: make(chan struct{}),
-		registerRequest:      make(chan *registerChain),
-		Pipe:                 make(chan net.Conn),
+		request:              make(chan *request),
+		pipe:                 make(chan net.Conn),
+		proxy:                proxy,
+		remoteConn:           nil,
 	}
 
 	r.GET("/ws", func(c *gin.Context) {
@@ -89,7 +93,7 @@ func SetupManager(keyword string) *Manager {
 		if !ok {
 			return
 		}
-		manager.registerRequest <- &registerChain{uuid: uuid, conn: conn}
+		manager.request <- &request{uuid: uuid, conn: conn}
 	})
 
 	return manager
@@ -98,8 +102,12 @@ func SetupManager(keyword string) *Manager {
 func (manager *Manager) Listen(addr string) {
 	log.Println("Listening on", addr)
 
+	defer manager.proxy.Close()
+
 	done := make(chan struct{})
 	go manager.manage(done)
+	go manager.proxy.Listen(manager.pipe)
+
 	manager.engine.Run(addr)
 	done <- struct{}{}
 }
@@ -128,28 +136,26 @@ func (manager *Manager) manage(done chan struct{}) {
 		select {
 		case conn := <-manager.registerRemoteConn:
 			manager.remoteConn = conn
-			if manager.remoteConn == nil {
-				manager.unregisterRemoteConn <- struct{}{}
+			if manager.remoteConn != nil {
+				go manager.alive(manager.remoteConn)
 			}
-			go manager.alive(conn)
 		case <-manager.unregisterRemoteConn:
 			manager.remoteConn.Close()
 			manager.remoteConn = nil
-		case request := <-manager.registerRequest:
+		case request := <-manager.request:
 			dest := helper.NewWebSocketIO(request.conn)
 			pipe := manager.pipes[request.uuid]
 			delete(manager.pipes, request.uuid)
 			go manager.handle(request.uuid, dest, pipe)
-		case pipe := <-manager.Pipe:
+		case pipe := <-manager.pipe:
 			ticket := uuid.NewString()
-			remoteConn := manager.remoteConn
-			if remoteConn == nil {
+			if manager.remoteConn == nil {
 				fmt.Fprint(pipe, badGatewayResponse)
 				pipe.Close()
-				continue
+			} else {
+				manager.remoteConn.WriteJSON(map[string]string{"uuid": ticket})
+				manager.pipes[ticket] = pipe
 			}
-			remoteConn.WriteJSON(map[string]string{"uuid": ticket})
-			manager.pipes[ticket] = pipe
 		case <-done:
 			return
 		}

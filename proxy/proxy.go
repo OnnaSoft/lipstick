@@ -30,3 +30,7 @@ func (proxy *Proxy) Listen(manager chan net.Conn) {
 		manager <- conn
 	}
 }
+
+func (proxy *Proxy) Close() error {
+	return proxy.listener.Close()
+}
