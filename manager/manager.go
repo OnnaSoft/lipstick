@@ -52,8 +52,8 @@ type Manager struct {
 	remoteConn           *websocket.Conn
 	registerRemoteConn   chan *websocket.Conn
 	unregisterRemoteConn chan struct{}
-	registerChain        chan *registerChain
-	unregisterChain      chan string
+	registerRequest      chan *registerChain
+	unregisterRequest    chan string
 	pipes                map[string]net.Conn
 	channels             map[string]*websocket.Conn
 	wsChain              chan wsChain
@@ -70,8 +70,8 @@ func SetupManager(keyword string) *Manager {
 		wsChain:              make(chan wsChain),
 		registerRemoteConn:   make(chan *websocket.Conn),
 		unregisterRemoteConn: make(chan struct{}),
-		registerChain:        make(chan *registerChain),
-		unregisterChain:      make(chan string),
+		registerRequest:      make(chan *registerChain),
+		unregisterRequest:    make(chan string),
 		Pipe:                 make(chan net.Conn),
 	}
 
@@ -95,7 +95,7 @@ func SetupManager(keyword string) *Manager {
 		if !ok {
 			return
 		}
-		manager.registerChain <- &registerChain{uuid: uuid, Conn: conn}
+		manager.registerRequest <- &registerChain{uuid: uuid, Conn: conn}
 	})
 
 	return manager
@@ -127,51 +127,56 @@ func (manager *Manager) Forward() {
 	}
 }
 
+func (manager *Manager) alive(conn *websocket.Conn) {
+	for {
+		if _, _, err := conn.ReadMessage(); err != nil {
+			manager.unregisterRemoteConn <- struct{}{}
+			break
+		}
+	}
+}
+
+func (manager *Manager) handle(uuid string, dest *helper.WebSocketIO, pipe net.Conn) {
+	defer func() {
+		manager.unregisterRequest <- uuid
+	}()
+
+	go helper.Copy(pipe, dest)
+	helper.Copy(dest, pipe)
+}
+
 func (manager *Manager) Manage() {
 	for {
 		select {
 		case conn := <-manager.registerRemoteConn:
 			manager.remoteConn = conn
-			go func() {
-				for {
-					_, _, err := conn.ReadMessage()
-					if err != nil {
-						manager.unregisterRemoteConn <- struct{}{}
-						break
-					}
-				}
-			}()
+			if manager.remoteConn == nil {
+				manager.unregisterRemoteConn <- struct{}{}
+			}
+			go manager.alive(conn)
 		case <-manager.unregisterRemoteConn:
 			manager.remoteConn.Close()
 			manager.remoteConn = nil
-		case channel := <-manager.registerChain:
+		case channel := <-manager.registerRequest:
 			manager.channels[channel.uuid] = channel.Conn
-
 			dest := helper.NewWebSocketIO(channel.Conn)
 			pipe := manager.pipes[channel.uuid]
-
-			go func() {
-				go helper.Copy(pipe, dest)
-
-				defer func() {
-					manager.unregisterChain <- channel.uuid
-				}()
-
-				helper.Copy(dest, pipe)
-			}()
-		case channel := <-manager.unregisterChain:
+			go manager.handle(channel.uuid, dest, pipe)
+		case channel := <-manager.unregisterRequest:
 			manager.channels[channel].Close()
 			manager.pipes[channel].Close()
 			delete(manager.channels, channel)
 			delete(manager.pipes, channel)
 		case pipe := <-manager.Pipe:
 			ticket := uuid.NewString()
-			if ws := manager.remoteConn; ws != nil {
-				ws.WriteJSON(map[string]string{"uuid": ticket})
-				manager.pipes[ticket] = pipe
-			} else {
+			remoteConn := manager.remoteConn
+			if remoteConn == nil {
 				fmt.Fprint(pipe, badGatewayResponse)
+				pipe.Close()
+				continue
 			}
+			remoteConn.WriteJSON(map[string]string{"uuid": ticket})
+			manager.pipes[ticket] = pipe
 		}
 	}
 }
