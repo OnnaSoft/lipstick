@@ -107,11 +107,8 @@ func connect(proxyPass, uuid string) {
 	if err != nil {
 		return
 	}
-
 	defer connection.Close()
-	defer func() {
-		recover()
-	}()
+
 	conn := helper.NewWebSocketIO(connection)
 	remote, err := net.Dial("tcp", proxyPass)
 	if err != nil {
