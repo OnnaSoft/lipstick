@@ -9,7 +9,7 @@ import (
 
 func main() {
 	var wg sync.WaitGroup
-	url := "http://localhost:8080"
+	url := "http://localhost:5050"
 	requests := 100000
 
 	// Limita la concurrencia a 10 goroutines

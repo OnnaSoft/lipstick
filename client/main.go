@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"time"
@@ -29,8 +30,10 @@ func main() {
 		go func(proxyPass string) {
 			sleep := 3 * time.Second
 			for {
-				url := serverUrl + "?keyword=" + conf.Keyword
-				connection, _, err := websocket.DefaultDialer.Dial(url, nil)
+				url := serverUrl
+				headers := http.Header{}
+				headers.Set("authorization", conf.Keyword)
+				connection, _, err := websocket.DefaultDialer.Dial(url, headers)
 				if err != nil {
 					fmt.Println("Error al conectar al servidor WebSocket:", err)
 					time.Sleep(sleep)

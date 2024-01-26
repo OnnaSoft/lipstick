@@ -39,8 +39,8 @@ func loadConfig() {
 
 	configPathDefault := path.Join(dir, "config.client.yml")
 	flag.StringVar(&configPath, "c", configPathDefault, "config path")
-	flag.StringVar(&managerAddr, "m", ":8081", "Port where your client will connect via websocket. You can manage it in your firewall")
-	flag.StringVar(&proxyAddr, "p", ":8080", "Port where you will get all requests from local network or internet")
+	flag.StringVar(&managerAddr, "m", ":5051", "Port where your client will connect via websocket. You can manage it in your firewall")
+	flag.StringVar(&proxyAddr, "p", ":5050", "Port where you will get all requests from local network or internet")
 	flag.StringVar(&secret, "k", "", "Private secret use to autenticate nodes")
 
 	flag.Parse()
