@@ -135,6 +135,10 @@ func (manager *Manager) manage(done chan struct{}) {
 	for {
 		select {
 		case conn := <-manager.registerRemoteConn:
+			if manager.remoteConn != nil {
+				conn.Close()
+				continue
+			}
 			manager.remoteConn = conn
 			if manager.remoteConn != nil {
 				go manager.alive(manager.remoteConn)
