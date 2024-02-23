@@ -1,6 +1,7 @@
 package helper
 
 import (
+	"crypto/tls"
 	"fmt"
 	"net"
 	"net/http"
@@ -58,4 +59,21 @@ func GetHijack(w http.ResponseWriter) (net.Conn, error) {
 	c, _, err := hijacker.Hijack()
 
 	return c, err
+}
+
+func GetDomainName(conn net.Conn) (string, error) {
+	tlsConn, ok := conn.(*tls.Conn)
+	if !ok {
+		return "localhost", nil
+	}
+
+	err := tlsConn.Handshake()
+	if err != nil {
+		return "", err
+	}
+
+	state := tlsConn.ConnectionState()
+	domain := state.ServerName
+
+	return domain, nil
 }

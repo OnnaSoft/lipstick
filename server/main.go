@@ -18,10 +18,10 @@ func main() {
 	proxyAddr := conf.Proxy.Addr
 	managerAddr := conf.Manager.Addr
 
-	proxy := proxy.SetupProxy(proxyAddr)
+	proxy := proxy.SetupProxy(proxyAddr, conf.Certs.Cert, conf.Certs.Key)
 	manager := manager.SetupManager(conf.Keyword, proxy)
 
-	go manager.Listen(managerAddr)
+	go manager.Listen(managerAddr, conf.Certs.Cert, conf.Certs.Key)
 
 	<-interrupt
 	fmt.Println("Desconectando...")

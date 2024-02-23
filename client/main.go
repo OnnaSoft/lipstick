@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -24,6 +25,18 @@ func main() {
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt)
 
+	// Crear configuración TLS personalizada para ignorar la verificación del certificado SSL
+	tlsConfig := &tls.Config{
+		InsecureSkipVerify: true, // Ignorar la verificación del certificado
+	}
+
+	// Crear un marcador con la configuración TLS personalizada
+	dialer := websocket.DefaultDialer
+	dialer.TLSClientConfig = tlsConfig
+
+	// Establecer un tiempo de espera para la conexión
+	dialer.HandshakeTimeout = 5 * time.Second
+
 	fmt.Println(serverUrl, conf.ProxyPass)
 
 	for _, proxyPass := range conf.ProxyPass {
@@ -33,7 +46,8 @@ func main() {
 				url := serverUrl
 				headers := http.Header{}
 				headers.Set("authorization", conf.Keyword)
-				connection, _, err := websocket.DefaultDialer.Dial(url, headers)
+
+				connection, _, err := dialer.Dial(url, headers)
 				if err != nil {
 					fmt.Println("Error al conectar al servidor WebSocket:", err)
 					time.Sleep(sleep)

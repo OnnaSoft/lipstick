@@ -21,6 +21,10 @@ type Config struct {
 	Manager struct {
 		Addr string `yaml:"addr"`
 	} `yaml:"manager"`
+	Certs struct {
+		Cert string `yaml:"cert"`
+		Key  string `yaml:"key"`
+	} `yaml:"certs"`
 }
 
 var config interface{}
@@ -30,6 +34,8 @@ func loadConfig() {
 	var managerAddr = ""
 	var proxyAddr = ""
 	var secret = ""
+	var cert = ""
+	var key = ""
 
 	result := Config{}
 	dir, err := filepath.Abs(filepath.Dir(os.Args[0]))
@@ -42,6 +48,9 @@ func loadConfig() {
 	flag.StringVar(&managerAddr, "m", ":5051", "Port where your client will connect via websocket. You can manage it in your firewall")
 	flag.StringVar(&proxyAddr, "p", ":5050", "Port where you will get all requests from local network or internet")
 	flag.StringVar(&secret, "k", "", "Private secret use to autenticate nodes")
+
+	flag.StringVar(&cert, "cert", "", "Path to the certificate file")
+	flag.StringVar(&key, "key", "", "Path to the key file")
 
 	flag.Parse()
 
@@ -60,6 +69,9 @@ func loadConfig() {
 	result.Proxy.Addr = helper.SetValue(proxyAddr, result.Proxy.Addr).(string)
 	result.Manager.Addr = helper.SetValue(managerAddr, result.Manager.Addr).(string)
 	result.Keyword = helper.SetValue(secret, result.Keyword).(string)
+
+	result.Certs.Cert = helper.SetValue(cert, result.Certs.Cert).(string)
+	result.Certs.Key = helper.SetValue(key, result.Certs.Key).(string)
 
 	config = result
 }

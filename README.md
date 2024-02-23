@@ -8,12 +8,6 @@ Here a small text explain what exactly is what thing.
 ### Server
 All parts are servers because server content but in this case server is related with the real server in your implementation, i wan to say, server is the remote host where you try to get your local port.
 
-**How to install**
-
-```
-curl -SL https://github.com/juliotorresmoreno/lipstick/releases/download/v0.0.1-alpha/lipstick-server -o /usr/local/bin/lipstick-server
-
-chmod +x /usr/local/bin/lipstick-server
 ```
 
 **How to use**
@@ -31,13 +25,6 @@ Usage of lipstick-server:
 ### Client
 This is the machine where exists your web servere what you want share with others.
 
-**How to install**
-
-```
-curl -SL https://github.com/juliotorresmoreno/lipstick/releases/download/v0.0.1-alpha/lipstick-client -o /usr/local/bin/lipstick-client
-
-chmod +x /usr/local/bin/lipstick-client
-```
 
 **How to use**
 
