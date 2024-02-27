@@ -41,10 +41,20 @@ Usage of lipstick-client:
 
 ## Run client on docker
 ```bash
-docker run --entrypoint /lipstick/lipstick-client --name lipstick-client --network host --restart always -dt jliotorresmoreno/lipstick -s wss://example.com/ws -k 123456
+docker run --entrypoint lipstick --name lipstick --network host --restart always -dt jliotorresmoreno/lipstick -s ws://127.0.0.1:5051/ws -k 123456
+```
+
+```bash
+docker run --entrypoint lipstick --name lipstick --network host --restart always -dt jliotorresmoreno/lipstick -s wss://example.com/ws -k 123456
 ```
 
 ## Run server on docker
 ```bash
-docker run --entrypoint /lipstick/lipstick-server --name lipstick-server --network host --restart always -dt jliotorresmoreno/lipstick -k 123456
+docker run --name lipstickd --network host --restart always -d jliotorresmoreno/lipstick -k 123456
+```
+
+```bash
+docker run --entrypoint lipstickd --name lipstickd --network host \
+  -v /etc/letsencrypt:/etc/letsencrypt --restart always -d jliotorresmoreno/lipstick -k 123456 \
+  -cert /etc/letsencrypt/live/example.com/fullchain.pem -key /etc/letsencrypt/live/example.com/privkey.pem
 ```

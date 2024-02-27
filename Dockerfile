@@ -1,8 +1,6 @@
-FROM golang:latest
+FROM ubuntu:latest
 
-ADD entrypoint.sh /entrypoint.sh
-ADD bin /lipstick
+ADD bin/lipstick /bin
+ADD bin/lipstickd /bin
 
-RUN chmod +x /lipstick/*
-RUN chmod +x /entrypoint.sh
-
+ENTRYPOINT [ "/bin/lipstickd" ]

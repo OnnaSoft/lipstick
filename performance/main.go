@@ -10,7 +10,7 @@ import (
 func main() {
 	var wg sync.WaitGroup
 	url := "http://localhost:5050"
-	requests := 100000
+	requests := 1000000
 
 	// Limita la concurrencia a 10 goroutines
 	concurrencyLimit := make(chan struct{}, 512)
