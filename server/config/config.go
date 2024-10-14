@@ -25,6 +25,14 @@ type Config struct {
 		Cert string `yaml:"cert"`
 		Key  string `yaml:"key"`
 	} `yaml:"certs"`
+	Database struct {
+		Host     string `yaml:"host"`
+		Port     int    `yaml:"port"`
+		User     string `yaml:"user"`
+		Password string `yaml:"password"`
+		DbName   string `yaml:"dbname"`
+		SslMode  string `yaml:"sslmode"`
+	} `yaml:"database"`
 }
 
 var config interface{}

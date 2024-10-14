@@ -120,7 +120,18 @@ var badGatewayResponse = badGatewayHeader + fmt.Sprint(len(badGatewayContent)) +
 func connect(proxyPass, uuid string) {
 	url := serverUrl + "/" + uuid
 
-	connection, _, err := websocket.DefaultDialer.Dial(url, nil)
+	tlsConfig := &tls.Config{
+		InsecureSkipVerify: true, // Ignorar la verificación del certificado
+	}
+
+	// Crear un marcador con la configuración TLS personalizada
+	dialer := websocket.DefaultDialer
+	dialer.TLSClientConfig = tlsConfig
+
+	// Establecer un tiempo de espera para la conexión
+	dialer.HandshakeTimeout = 5 * time.Second
+
+	connection, _, err := dialer.Dial(url, nil)
 	if err != nil {
 		return
 	}

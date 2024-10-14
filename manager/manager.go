@@ -1,7 +1,6 @@
 package manager
 
 import (
-	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -13,6 +12,7 @@ import (
 	"github.com/juliotorresmoreno/lipstick/common"
 	"github.com/juliotorresmoreno/lipstick/helper"
 	"github.com/juliotorresmoreno/lipstick/proxy"
+	"github.com/juliotorresmoreno/lipstick/server/auth"
 )
 
 var upgrader = websocket.Upgrader{
@@ -44,8 +44,14 @@ var badGatewayContent = `<!DOCTYPE html>
 var badGatewayResponse = badGatewayHeader + fmt.Sprint(len(badGatewayContent)) + "\n\n" + badGatewayContent
 
 type websocketConn struct {
+	UserID uint
 	Domain string
 	*websocket.Conn
+}
+
+type UserDomain struct {
+	UserID uint
+	Domain string
 }
 
 type Manager struct {
@@ -53,62 +59,30 @@ type Manager struct {
 	remoteConn              chan *common.RemoteConn
 	remoteConnections       map[string]net.Conn
 	websocketConn           map[string]*websocket.Conn
+	userConnections         map[uint]uint
 	registerWebsocketConn   chan *websocketConn
-	unregisterWebsocketConn chan string
+	unregisterWebsocketConn chan *UserDomain
 	request                 chan *request
 	proxy                   *proxy.Proxy
+	authManager             auth.AuthManager
 }
 
 func SetupManager(keyword string, proxy *proxy.Proxy) *Manager {
 	gin.SetMode(gin.ReleaseMode)
-	r := gin.New()
 
 	manager := &Manager{
-		engine:                  r,
 		remoteConnections:       make(map[string]net.Conn),
 		websocketConn:           make(map[string]*websocket.Conn),
 		registerWebsocketConn:   make(chan *websocketConn),
-		unregisterWebsocketConn: make(chan string),
+		unregisterWebsocketConn: make(chan *UserDomain),
 		request:                 make(chan *request),
 		remoteConn:              make(chan *common.RemoteConn),
 		proxy:                   proxy,
+		authManager:             auth.MakeAuthManager(),
+		userConnections:         make(map[uint]uint),
 	}
 
-	r.GET("/ws", func(c *gin.Context) {
-		wsConn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
-		if keyword != c.GetHeader("authorization") {
-			err = errors.New("Unauthorized")
-		}
-
-		if err != nil {
-			log.Println(err)
-			wsConn.Close()
-			return
-		}
-
-		domain, err := helper.GetDomainName(wsConn.NetConn())
-		if err != nil {
-			log.Println(err)
-			wsConn.Close()
-			return
-		}
-
-		manager.registerWebsocketConn <- &websocketConn{Domain: domain, Conn: wsConn}
-	})
-
-	r.GET("/ws/:uuid", func(c *gin.Context) {
-		conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-
-		uuid, ok := c.Params.Get("uuid")
-		if !ok {
-			return
-		}
-		manager.request <- &request{uuid: uuid, conn: conn}
-	})
+	configureRouter(manager)
 
 	return manager
 }
@@ -118,28 +92,37 @@ func (manager *Manager) Listen(addr string, cert string, key string) {
 
 	defer manager.proxy.Close()
 
+	var err error
 	done := make(chan struct{})
 	go manager.manage(done)
 	go manager.proxy.Listen(manager.remoteConn)
 
 	if cert != "" && key != "" {
-		manager.engine.RunTLS(addr, cert, key)
+		err = manager.engine.RunTLS(addr, cert, key)
 	} else {
-		manager.engine.Run(addr)
+		err = manager.engine.Run(addr)
 	}
+
+	if err != nil {
+		log.Println("Error on listen", err)
+	}
+
 	done <- struct{}{}
 }
 
 func (manager *Manager) alive(conn *websocketConn) {
 	for {
 		if _, _, err := conn.ReadMessage(); err != nil {
-			manager.unregisterWebsocketConn <- conn.Domain
+			manager.unregisterWebsocketConn <- &UserDomain{
+				UserID: conn.UserID,
+				Domain: conn.Domain,
+			}
 			break
 		}
 	}
 }
 
-func (manager *Manager) handle(uuid string, dest *helper.WebSocketIO, pipe net.Conn) {
+func (manager *Manager) handle(dest *helper.WebSocketIO, pipe net.Conn) {
 	defer func() {
 		dest.Close()
 		pipe.Close()
@@ -161,17 +144,28 @@ func (manager *Manager) manage(done chan struct{}) {
 			if manager.websocketConn != nil {
 				go manager.alive(conn)
 			}
-		case domain := <-manager.unregisterWebsocketConn:
-			if manager.websocketConn[domain] == nil {
+
+			if _, ok := manager.userConnections[conn.UserID]; !ok {
+				manager.userConnections[conn.UserID] = 0
+			}
+			manager.userConnections[conn.UserID]++
+
+			fmt.Println("Connected", conn.Domain)
+		case userDomain := <-manager.unregisterWebsocketConn:
+			if manager.websocketConn[userDomain.Domain] == nil {
 				continue
 			}
-			manager.websocketConn[domain].Close()
-			manager.websocketConn[domain] = nil
+			manager.websocketConn[userDomain.Domain].Close()
+			manager.websocketConn[userDomain.Domain] = nil
+
+			manager.userConnections[userDomain.UserID]--
+
+			fmt.Println("Disconnected", userDomain.Domain)
 		case request := <-manager.request:
 			dest := helper.NewWebSocketIO(request.conn)
 			pipe := manager.remoteConnections[request.uuid]
 			delete(manager.remoteConnections, request.uuid)
-			go manager.handle(request.uuid, dest, pipe)
+			go manager.handle(dest, pipe)
 		case remoteConn := <-manager.remoteConn:
 			ticket := uuid.NewString()
 			if manager.websocketConn[remoteConn.Domain] == nil {

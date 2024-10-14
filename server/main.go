@@ -8,6 +8,7 @@ import (
 	"github.com/juliotorresmoreno/lipstick/manager"
 	"github.com/juliotorresmoreno/lipstick/proxy"
 	"github.com/juliotorresmoreno/lipstick/server/config"
+	"github.com/juliotorresmoreno/lipstick/server/db"
 )
 
 func main() {
@@ -17,6 +18,8 @@ func main() {
 
 	proxyAddr := conf.Proxy.Addr
 	managerAddr := conf.Manager.Addr
+
+	db.Migrate()
 
 	proxy := proxy.SetupProxy(proxyAddr, conf.Certs.Cert, conf.Certs.Key)
 	manager := manager.SetupManager(conf.Keyword, proxy)
