@@ -63,15 +63,20 @@ func (p *PostgresAuthManager) GetUserByDomain(domain string) (*User, *Domain, er
 		return nil, nil, tx.Error
 	}
 
-	return &User{
-			ID:       user.ID,
-			Username: user.Username,
-			Limit:    user.Limit,
-		}, &Domain{
-			ID:     result.ID,
-			Name:   result.Name,
-			ApiKey: result.ApiKey,
-		}, nil
+	u := &User{
+		ID:       user.ID,
+		Username: user.Username,
+		Limit:    user.Limit,
+	}
+	d := &Domain{
+		ID:     result.ID,
+		Name:   result.Name,
+		ApiKey: result.ApiKey,
+		UserID: result.UserID,
+		User:   u,
+	}
+
+	return u, d, nil
 }
 
 func (p *PostgresAuthManager) AddUser(user *User) error {
