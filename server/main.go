@@ -12,7 +12,12 @@ import (
 )
 
 func main() {
-	var conf, _ = config.GetConfig()
+	var conf, err = config.GetConfig()
+	if err != nil {
+		fmt.Println("Error al cargar la configuración", err)
+		return
+	}
+
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt)
 
