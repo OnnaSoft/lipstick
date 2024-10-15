@@ -55,7 +55,7 @@ func (p *PostgresAuthManager) GetUser(id uint) (*User, error) {
 
 func (p *PostgresAuthManager) GetUserByDomain(domain string) (*User, *Domain, error) {
 	result := &db.Domain{}
-	if tx := p.db.Where("domain = ?", domain).First(result); tx.Error != nil {
+	if tx := p.db.Where("name = ?", domain).First(result); tx.Error != nil {
 		return nil, nil, tx.Error
 	}
 	user := &db.User{}
