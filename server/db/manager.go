@@ -16,7 +16,11 @@ func NewConnection() (*gorm.DB, error) {
 		log.Fatal(err)
 	}
 
-	dsn := "host=" + conf.Database.Host + " user=" + conf.Database.User + " dbname=" + conf.Database.DbName + " sslmode=" + conf.Database.SslMode + " password=" + conf.Database.Password
+	dsn := "host=" + conf.Database.Host +
+		" user=" + conf.Database.User +
+		" dbname=" + conf.Database.DbName +
+		" sslmode=" + conf.Database.SslMode +
+		" password=" + conf.Database.Password
 	connection, err := gorm.Open("postgres", dsn)
 	connection.LogMode(true)
 
