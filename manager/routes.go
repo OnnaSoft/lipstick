@@ -30,6 +30,8 @@ func configureRouter(manager *Manager) {
 
 	r.GET("/domains", router.getDomains)
 	r.POST("/domains", router.addDomain)
+	r.PATCH("/domains/:domain_name", router.updateDomain)
+	r.DELETE("/domains/:domain_name", router.deleteDomain)
 
 	manager.engine = r
 }
@@ -73,6 +75,55 @@ func (r *router) addDomain(c *gin.Context) {
 
 	if err := r.manager.authManager.AddDomain(domain); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Unable to add domain"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+func (r *router) updateDomain(c *gin.Context) {
+	if !isAuthorized(c) {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	domain := &auth.Domain{}
+	if err := c.BindJSON(domain); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	domain_name := c.Param("domain_name")
+	record, err := r.manager.authManager.GetDomain(domain_name)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Unable to get domain"})
+		return
+	}
+
+	domain.ID = record.ID
+	if err := r.manager.authManager.UpdateDomain(domain); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Unable to update domain"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+func (r *router) deleteDomain(c *gin.Context) {
+	if !isAuthorized(c) {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	domain_name := c.Param("domain_name")
+	record, err := r.manager.authManager.GetDomain(domain_name)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Unable to get domain"})
+		return
+	}
+
+	if err := r.manager.authManager.DelDomain(record.ID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Unable to delete domain"})
 		return
 	}
 

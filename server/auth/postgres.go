@@ -127,7 +127,7 @@ func (p *PostgresAuthManager) GetDomains() ([]*Domain, error) {
 
 func (p *PostgresAuthManager) GetDomain(domain string) (*Domain, error) {
 	result := &db.Domain{}
-	if tx := p.db.Where("domain = ?", domain).First(result); tx.Error != nil {
+	if tx := p.db.Where("name = ?", domain).First(result); tx.Error != nil {
 		return nil, tx.Error
 	}
 
@@ -140,6 +140,7 @@ func (p *PostgresAuthManager) GetDomain(domain string) (*Domain, error) {
 
 func (p *PostgresAuthManager) AddDomain(domain *Domain) error {
 	tx := p.db.Create(&db.Domain{
+		UserID: domain.UserID,
 		Name:   domain.Name,
 		ApiKey: domain.ApiKey,
 	})
@@ -151,7 +152,7 @@ func (p *PostgresAuthManager) AddDomain(domain *Domain) error {
 }
 
 func (p *PostgresAuthManager) UpdateDomain(domain *Domain) error {
-	tx := p.db.Model(&db.Domain{}).Where("id = ?", domain.ID).Update("domain", domain.Name, "api_key", domain)
+	tx := p.db.Model(&db.Domain{}).Where("id = ?", domain.ID).Update(domain)
 	if tx.Error != nil {
 		return tx.Error
 	}
@@ -159,8 +160,8 @@ func (p *PostgresAuthManager) UpdateDomain(domain *Domain) error {
 	return nil
 }
 
-func (p *PostgresAuthManager) DelDomain(domain *Domain) error {
-	tx := p.db.Delete(&db.Domain{}, domain.ID)
+func (p *PostgresAuthManager) DelDomain(id uint) error {
+	tx := p.db.Delete(&db.Domain{}, id)
 	if tx.Error != nil {
 		return tx.Error
 	}

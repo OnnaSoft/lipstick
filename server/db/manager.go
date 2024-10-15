@@ -51,10 +51,9 @@ func Migrate() {
 		log.Fatal(err)
 	}
 
-	if tx := connection.AutoMigrate(&User{}); tx.Error != nil {
+	if tx := connection.AutoMigrate(&User{}, Domain{}); tx.Error != nil {
 		log.Fatal(tx.Error)
 	}
-	if tx := connection.AutoMigrate(&Domain{}); tx.Error != nil {
-		log.Fatal(tx.Error)
-	}
+
+	connection.Model(&Domain{}).AddForeignKey("user_id", "users(id)", "CASCADE", "CASCADE")
 }

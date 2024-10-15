@@ -10,6 +10,8 @@ type Domain struct {
 	ID     uint   `json:"id"`
 	Name   string `json:"name"`
 	ApiKey string `json:"apiKey"`
+	UserID uint   `json:"userId"`
+	User   *User  `json:"user"`
 }
 
 type AuthManager interface {
@@ -24,7 +26,7 @@ type AuthManager interface {
 	GetDomain(domain string) (*Domain, error)
 	AddDomain(domain *Domain) error
 	UpdateDomain(domain *Domain) error
-	DelDomain(domain *Domain) error
+	DelDomain(id uint) error
 }
 
 func MakeAuthManager() AuthManager {
