@@ -250,9 +250,16 @@ func (r *router) upgrade(c *gin.Context) {
 		return
 	}
 
-	user, domain, err := r.manager.authManager.GetUserByDomain(domainName)
+	domain, err := r.manager.authManager.GetDomain(domainName)
 	if err != nil {
-		log.Println("Unable to get user by domain", err)
+		log.Println("Unable to get domain", err)
+		wsConn.Close()
+		return
+	}
+
+	user, err := r.manager.authManager.GetUser(domain.UserID)
+	if err != nil {
+		log.Println("Unable to get user", err)
 		wsConn.Close()
 		return
 	}

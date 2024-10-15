@@ -53,32 +53,6 @@ func (p *PostgresAuthManager) GetUser(id uint) (*User, error) {
 	}, nil
 }
 
-func (p *PostgresAuthManager) GetUserByDomain(domain string) (*User, *Domain, error) {
-	result := &db.Domain{}
-	if tx := p.db.Where("name = ?", domain).First(result); tx.Error != nil {
-		return nil, nil, tx.Error
-	}
-	user := &db.User{}
-	if tx := p.db.First(user, result.UserID); tx.Error != nil {
-		return nil, nil, tx.Error
-	}
-
-	u := &User{
-		ID:       user.ID,
-		Username: user.Username,
-		Limit:    user.Limit,
-	}
-	d := &Domain{
-		ID:     result.ID,
-		Name:   result.Name,
-		ApiKey: result.ApiKey,
-		UserID: result.UserID,
-		User:   u,
-	}
-
-	return u, d, nil
-}
-
 func (p *PostgresAuthManager) AddUser(user *User) error {
 	tx := p.db.Create(&db.User{
 		Username: user.Username,

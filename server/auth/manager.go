@@ -17,7 +17,6 @@ type Domain struct {
 type AuthManager interface {
 	GetUsers() ([]*User, error)
 	GetUser(id uint) (*User, error)
-	GetUserByDomain(domain string) (*User, *Domain, error)
 	AddUser(user *User) error
 	UpdateUser(user *User) error
 	DelUser(id uint) error
