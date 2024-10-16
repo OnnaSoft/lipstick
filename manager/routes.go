@@ -256,13 +256,7 @@ func (r *router) upgrade(c *gin.Context) {
 		wsConn.Close()
 		return
 	}
-
-	user, err := r.manager.authManager.GetUser(domain.UserID)
-	if err != nil {
-		log.Println("Unable to get user", err)
-		wsConn.Close()
-		return
-	}
+	user := domain.User
 
 	connections := r.manager.userConnections[user.ID]
 	if connections >= user.Limit {

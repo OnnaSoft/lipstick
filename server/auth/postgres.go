@@ -106,7 +106,10 @@ func (p *PostgresAuthManager) GetDomains() ([]*Domain, error) {
 
 func (p *PostgresAuthManager) GetDomain(domain string) (*Domain, error) {
 	result := &db.Domain{}
-	if tx := p.db.Where("name = ?", domain).First(result); tx.Error != nil {
+	tx := p.db.Preload("User", func(db *gorm.DB) *gorm.DB {
+		return db.Limit(1)
+	}).Where("name = ?", domain).First(result)
+	if tx.Error != nil {
 		return nil, tx.Error
 	}
 
@@ -114,6 +117,12 @@ func (p *PostgresAuthManager) GetDomain(domain string) (*Domain, error) {
 		ID:     result.ID,
 		Name:   result.Name,
 		ApiKey: result.ApiKey,
+		UserID: result.UserID,
+		User: &User{
+			ID:       result.User.ID,
+			Username: result.User.Username,
+			Limit:    result.User.Limit,
+		},
 	}, nil
 }
 
