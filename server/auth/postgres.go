@@ -88,7 +88,7 @@ func (p *PostgresAuthManager) DelUser(id uint) error {
 
 func (p *PostgresAuthManager) GetDomains() ([]*Domain, error) {
 	domains := []*db.Domain{}
-	if tx := p.db.Find(&domains); tx.Error != nil {
+	if tx := p.db.Preload("User").Find(&domains); tx.Error != nil {
 		return nil, tx.Error
 	}
 
@@ -98,6 +98,12 @@ func (p *PostgresAuthManager) GetDomains() ([]*Domain, error) {
 			ID:     domain.ID,
 			Name:   domain.Name,
 			ApiKey: domain.ApiKey,
+			UserID: domain.UserID,
+			User: &User{
+				ID:       domain.User.ID,
+				Username: domain.User.Username,
+				Limit:    domain.User.Limit,
+			},
 		}
 	}
 

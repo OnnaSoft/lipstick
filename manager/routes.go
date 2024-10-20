@@ -29,6 +29,7 @@ func configureRouter(manager *Manager) {
 	r.DELETE("/users/:id", router.deleteUser)
 
 	r.GET("/domains", router.getDomains)
+	r.GET("/domains/:domain_name", router.getDomain)
 	r.POST("/domains", router.addDomain)
 	r.PATCH("/domains/:domain_name", router.updateDomain)
 	r.DELETE("/domains/:domain_name", router.deleteDomain)
@@ -59,6 +60,22 @@ func (r *router) getDomains(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, domains)
+}
+
+func (r *router) getDomain(c *gin.Context) {
+	if !isAuthorized(c) {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	domain_name := c.Param("domain_name")
+	domain, err := r.manager.authManager.GetDomain(domain_name)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Unable to get domain"})
+		return
+	}
+
+	c.JSON(http.StatusOK, domain)
 }
 
 func (r *router) addDomain(c *gin.Context) {
