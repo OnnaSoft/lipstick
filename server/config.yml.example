@@ -1,0 +1,16 @@
+keyword: 
+proxy:
+  addr: :8080
+manager: 
+  addr: :8081
+certs:
+  cert: 
+  key: 
+database:
+  host: localhost
+  port: 5432
+  user: 
+  password: 
+  dbname: 
+  sslmode: 
+  

@@ -1,0 +1,33 @@
+[Unit]
+Description=Advanced Tunnel
+After=network.target
+Documentation=https://github.com/juliotorresmoreno/lipstick/blob/master/README.md
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/lipstick -c /etc/lipstick/config.yml
+PIDFile=/run/lipstick/lipstick.pid
+TimeoutStopSec=0
+Restart=always
+User=lipstick
+Group=nogroup
+
+UMask=007
+ReadOnlyDirectories=/
+ReadWritePaths=-/var/log/lipstick
+ReadWritePaths=-/var/run/lipstick
+
+NoNewPrivileges=true
+CapabilityBoundingSet=CAP_SETGID CAP_SETUID CAP_SYS_RESOURCE
+MemoryDenyWriteExecute=true
+ProtectKernelModules=false
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictRealtime=true
+RestrictNamespaces=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+ProtectSystem=true
+
+[Install]
+WantedBy=multi-user.target
+Alias=lipstick.service
