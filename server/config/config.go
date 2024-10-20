@@ -6,33 +6,39 @@ import (
 	"io"
 	"log"
 	"os"
-	"path"
-	"path/filepath"
 
 	"github.com/juliotorresmoreno/lipstick/helper"
 	"gopkg.in/yaml.v3"
 )
 
+type Proxy struct {
+	Addr string `yaml:"addr"`
+}
+
+type Manager struct {
+	Addr string `yaml:"addr"`
+}
+
+type Certs struct {
+	Cert string `yaml:"cert"`
+	Key  string `yaml:"key"`
+}
+
+type Database struct {
+	Host     string `yaml:"host"`
+	Port     int    `yaml:"port"`
+	User     string `yaml:"user"`
+	Password string `yaml:"password"`
+	DbName   string `yaml:"dbname"`
+	SslMode  string `yaml:"sslmode"`
+}
+
 type Config struct {
-	Keyword string `yaml:"keyword"`
-	Proxy   struct {
-		Addr string `yaml:"addr"`
-	} `yaml:"proxy"`
-	Manager struct {
-		Addr string `yaml:"addr"`
-	} `yaml:"manager"`
-	Certs struct {
-		Cert string `yaml:"cert"`
-		Key  string `yaml:"key"`
-	} `yaml:"certs"`
-	Database struct {
-		Host     string `yaml:"host"`
-		Port     int    `yaml:"port"`
-		User     string `yaml:"user"`
-		Password string `yaml:"password"`
-		DbName   string `yaml:"dbname"`
-		SslMode  string `yaml:"sslmode"`
-	} `yaml:"database"`
+	Keyword  string   `yaml:"keyword"`
+	Proxy    Proxy    `yaml:"proxy"`
+	Manager  Manager  `yaml:"manager"`
+	Certs    Certs    `yaml:"certs"`
+	Database Database `yaml:"database"`
 }
 
 var config interface{}
@@ -45,16 +51,19 @@ func loadConfig() {
 	var cert = ""
 	var key = ""
 
-	result := Config{}
-	dir, err := filepath.Abs(filepath.Dir(os.Args[0]))
-	if err != nil {
-		log.Fatal(err)
+	result := Config{
+		Manager: Manager{
+			Addr: ":5051",
+		},
+		Proxy: Proxy{
+			Addr: ":5050",
+		},
 	}
 
-	configPathDefault := path.Join(dir, "config.client.yml")
+	configPathDefault := "/etc/lipstick/config.yml"
 	flag.StringVar(&configPath, "c", configPathDefault, "config path")
-	flag.StringVar(&managerAddr, "m", ":5051", "Port where your client will connect via websocket. You can manage it in your firewall")
-	flag.StringVar(&proxyAddr, "p", ":5050", "Port where you will get all requests from local network or internet")
+	flag.StringVar(&managerAddr, "m", "", "Port where your client will connect via websocket. You can manage it in your firewall")
+	flag.StringVar(&proxyAddr, "p", "", "Port where you will get all requests from local network or internet")
 	flag.StringVar(&secret, "k", "", "Private secret use to autenticate nodes")
 
 	flag.StringVar(&cert, "cert", "", "Path to the certificate file")
