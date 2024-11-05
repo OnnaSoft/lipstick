@@ -22,12 +22,6 @@ func configureRouter(manager *Manager) {
 	r.GET("/ws", router.upgrade)
 	r.GET("/ws/:uuid", router.request)
 
-	r.GET("/users", router.getUsers)
-	r.GET("/users/:id", router.getUser)
-	r.POST("/users", router.addUser)
-	r.PATCH("/users/:id", router.updateUser)
-	r.DELETE("/users/:id", router.deleteUser)
-
 	r.GET("/domains", router.getDomains)
 	r.GET("/domains/:domain_name", router.getDomain)
 	r.POST("/domains", router.addDomain)
@@ -147,108 +141,6 @@ func (r *router) deleteDomain(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
-func (r *router) getUsers(c *gin.Context) {
-	if !isAuthorized(c) {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
-		return
-	}
-
-	users, err := r.manager.authManager.GetUsers()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Unable to get users"})
-		return
-	}
-
-	c.JSON(http.StatusOK, users)
-}
-
-func (r *router) getUser(c *gin.Context) {
-	if !isAuthorized(c) {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
-		return
-	}
-
-	id := helper.ParseUint(c.Param("id"))
-	if id == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user id"})
-		return
-	}
-
-	user, err := r.manager.authManager.GetUser(id)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Unable to get user"})
-		return
-	}
-
-	c.JSON(http.StatusOK, user)
-}
-
-func (r *router) addUser(c *gin.Context) {
-	if !isAuthorized(c) {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
-		return
-	}
-
-	user := &auth.User{}
-	if err := c.BindJSON(user); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	if err := r.manager.authManager.AddUser(user); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Unable to add user"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"status": "ok"})
-}
-
-func (r *router) updateUser(c *gin.Context) {
-	if !isAuthorized(c) {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
-		return
-	}
-
-	user := &auth.User{}
-	if err := c.BindJSON(user); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	user.ID = helper.ParseUint(c.Param("id"))
-	if user.ID == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user id"})
-		return
-	}
-
-	if err := r.manager.authManager.UpdateUser(user); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Unable to update user"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"status": "ok"})
-}
-
-func (r *router) deleteUser(c *gin.Context) {
-	if !isAuthorized(c) {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
-		return
-	}
-
-	id := helper.ParseUint(c.Param("id"))
-	if id == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user id"})
-		return
-	}
-
-	if err := r.manager.authManager.DelUser(id); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Unable to delete user"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"status": "ok"})
-}
-
 func (r *router) health(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
@@ -273,17 +165,8 @@ func (r *router) upgrade(c *gin.Context) {
 		wsConn.Close()
 		return
 	}
-	user := domain.User
-
-	connections := r.manager.userConnections[user.ID]
-	if connections >= user.Limit {
-		log.Println("User limit exceeded", user.ID)
-		wsConn.Close()
-		return
-	}
 
 	r.manager.registerWebsocketConn <- &websocketConn{
-		UserID: user.ID,
 		Domain: domain.Name,
 		Conn:   wsConn,
 	}

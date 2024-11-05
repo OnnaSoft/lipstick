@@ -22,73 +22,9 @@ func NewPostgresAuthManager() AuthManager {
 	}
 }
 
-func (p *PostgresAuthManager) GetUsers() ([]*User, error) {
-	users := []*db.User{}
-	if tx := p.db.Find(&users); tx.Error != nil {
-		return nil, tx.Error
-	}
-
-	result := make([]*User, len(users))
-	for i, user := range users {
-		result[i] = &User{
-			ID:       user.ID,
-			Username: user.Username,
-			Limit:    user.Limit,
-		}
-	}
-
-	return result, nil
-}
-
-func (p *PostgresAuthManager) GetUser(id uint) (*User, error) {
-	user := &db.User{}
-	if tx := p.db.First(user, id); tx.Error != nil {
-		return nil, tx.Error
-	}
-
-	return &User{
-		ID:       user.ID,
-		Username: user.Username,
-		Limit:    user.Limit,
-	}, nil
-}
-
-func (p *PostgresAuthManager) AddUser(user *User) error {
-	tx := p.db.Create(&db.User{
-		Username: user.Username,
-		Limit:    user.Limit,
-	})
-	if tx.Error != nil {
-		return tx.Error
-	}
-
-	return nil
-}
-
-func (p *PostgresAuthManager) UpdateUser(user *User) error {
-	tx := p.db.Model(&db.User{}).Where("id = ?", user.ID).Update(db.User{
-		Username: user.Username,
-		Limit:    user.Limit,
-	})
-	if tx.Error != nil {
-		return tx.Error
-	}
-
-	return nil
-}
-
-func (p *PostgresAuthManager) DelUser(id uint) error {
-	tx := p.db.Delete(&db.User{}, id)
-	if tx.Error != nil {
-		return tx.Error
-	}
-
-	return nil
-}
-
 func (p *PostgresAuthManager) GetDomains() ([]*Domain, error) {
 	domains := []*db.Domain{}
-	if tx := p.db.Preload("User").Find(&domains); tx.Error != nil {
+	if tx := p.db.Find(&domains); tx.Error != nil {
 		return nil, tx.Error
 	}
 
@@ -98,12 +34,6 @@ func (p *PostgresAuthManager) GetDomains() ([]*Domain, error) {
 			ID:     domain.ID,
 			Name:   domain.Name,
 			ApiKey: domain.ApiKey,
-			UserID: domain.UserID,
-			User: &User{
-				ID:       domain.User.ID,
-				Username: domain.User.Username,
-				Limit:    domain.User.Limit,
-			},
 		}
 	}
 
@@ -112,9 +42,7 @@ func (p *PostgresAuthManager) GetDomains() ([]*Domain, error) {
 
 func (p *PostgresAuthManager) GetDomain(domain string) (*Domain, error) {
 	result := &db.Domain{}
-	tx := p.db.Preload("User", func(db *gorm.DB) *gorm.DB {
-		return db.Limit(1)
-	}).Where("name = ?", domain).First(result)
+	tx := p.db.Where("name = ?", domain).First(result)
 	if tx.Error != nil {
 		return nil, tx.Error
 	}
@@ -123,18 +51,11 @@ func (p *PostgresAuthManager) GetDomain(domain string) (*Domain, error) {
 		ID:     result.ID,
 		Name:   result.Name,
 		ApiKey: result.ApiKey,
-		UserID: result.UserID,
-		User: &User{
-			ID:       result.User.ID,
-			Username: result.User.Username,
-			Limit:    result.User.Limit,
-		},
 	}, nil
 }
 
 func (p *PostgresAuthManager) AddDomain(domain *Domain) error {
 	tx := p.db.Create(&db.Domain{
-		UserID: domain.UserID,
 		Name:   domain.Name,
 		ApiKey: domain.ApiKey,
 	})

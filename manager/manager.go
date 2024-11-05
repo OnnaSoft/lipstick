@@ -44,7 +44,6 @@ var badGatewayContent = `<!DOCTYPE html>
 var badGatewayResponse = badGatewayHeader + fmt.Sprint(len(badGatewayContent)) + "\n\n" + badGatewayContent
 
 type websocketConn struct {
-	UserID uint
 	Domain string
 	*websocket.Conn
 }
@@ -97,11 +96,7 @@ func (manager *Manager) Listen(addr string, cert string, key string) {
 	go manager.manage(done)
 	go manager.proxy.Listen(manager.remoteConn)
 
-	if cert != "" && key != "" {
-		err = manager.engine.RunTLS(addr, cert, key)
-	} else {
-		err = manager.engine.Run(addr)
-	}
+	err = manager.engine.Run(addr)
 
 	if err != nil {
 		log.Println("Error on listen", err)
@@ -114,7 +109,6 @@ func (manager *Manager) alive(conn *websocketConn) {
 	for {
 		if _, _, err := conn.ReadMessage(); err != nil {
 			manager.unregisterWebsocketConn <- &UserDomain{
-				UserID: conn.UserID,
 				Domain: conn.Domain,
 			}
 			break
@@ -144,11 +138,6 @@ func (manager *Manager) manage(done chan struct{}) {
 			if manager.websocketConn != nil {
 				go manager.alive(conn)
 			}
-
-			if _, ok := manager.userConnections[conn.UserID]; !ok {
-				manager.userConnections[conn.UserID] = 0
-			}
-			manager.userConnections[conn.UserID]++
 
 			fmt.Println("Connected", conn.Domain)
 		case userDomain := <-manager.unregisterWebsocketConn:
