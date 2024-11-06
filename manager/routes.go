@@ -49,8 +49,9 @@ func (r *router) upgrade(c *gin.Context) {
 	}
 
 	r.manager.registerWebsocketConn <- &websocketConn{
-		Domain: domain.Name,
-		Conn:   wsConn,
+		Domain:        domain.Name,
+		Conn:          wsConn,
+		AllowMultiple: true,
 	}
 }
 
