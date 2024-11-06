@@ -174,8 +174,8 @@ func (manager *Manager) manage(done chan struct{}) {
 			}
 			manager.remoteConnections[ticket] = remoteConn
 			conns := make([]*websocket.Conn, 0, len(manager.websocketConn[remoteConn.Domain]))
-			for clave := range manager.websocketConn[remoteConn.Domain] {
-				conns = append(conns, clave)
+			for key := range manager.websocketConn[remoteConn.Domain] {
+				conns = append(conns, key)
 			}
 
 			if len(conns) == 0 {
