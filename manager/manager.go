@@ -177,8 +177,8 @@ func (manager *Manager) manage(done chan struct{}) {
 			for clave := range manager.websocketConn[remoteConn.Domain] {
 				conns = append(conns, clave)
 			}
-			rand.Seed(time.Now().UnixNano())
-			conn := conns[rand.Intn(len(conns))]
+			rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
+			conn := conns[rnd.Intn(len(conns))]
 
 			if len(conns) == 0 {
 				fmt.Fprint(remoteConn, badGatewayResponse)
