@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/signal"
 
+	"github.com/juliotorresmoreno/lipstick/admin"
 	"github.com/juliotorresmoreno/lipstick/manager"
 	"github.com/juliotorresmoreno/lipstick/proxy"
 	"github.com/juliotorresmoreno/lipstick/server/config"
@@ -27,9 +28,11 @@ func main() {
 	db.Migrate()
 
 	proxy := proxy.SetupProxy(proxyAddr, conf.Certs.Cert, conf.Certs.Key)
-	manager := manager.SetupManager(conf.Keyword, proxy)
+	manager := manager.SetupManager(proxy, managerAddr, conf.Certs.Cert, conf.Certs.Key)
+	admin := admin.SetupAdmin(conf.Admin.Addr)
 
-	go manager.Listen(managerAddr, conf.Certs.Cert, conf.Certs.Key)
+	go manager.Listen()
+	go admin.Listen()
 
 	<-interrupt
 	fmt.Println("Desconectando...")

@@ -64,9 +64,12 @@ type Manager struct {
 	request                 chan *request
 	proxy                   *proxy.Proxy
 	authManager             auth.AuthManager
+	addr                    string
+	cert                    string
+	key                     string
 }
 
-func SetupManager(keyword string, proxy *proxy.Proxy) *Manager {
+func SetupManager(proxy *proxy.Proxy, addr string, cert string, key string) *Manager {
 	gin.SetMode(gin.ReleaseMode)
 
 	manager := &Manager{
@@ -79,6 +82,9 @@ func SetupManager(keyword string, proxy *proxy.Proxy) *Manager {
 		proxy:                   proxy,
 		authManager:             auth.MakeAuthManager(),
 		userConnections:         make(map[uint]uint),
+		addr:                    addr,
+		cert:                    cert,
+		key:                     key,
 	}
 
 	configureRouter(manager)
@@ -86,8 +92,8 @@ func SetupManager(keyword string, proxy *proxy.Proxy) *Manager {
 	return manager
 }
 
-func (manager *Manager) Listen(addr string, cert string, key string) {
-	log.Println("Listening on", addr)
+func (manager *Manager) Listen() {
+	log.Println("Listening manager on", manager.addr)
 
 	defer manager.proxy.Close()
 
@@ -96,7 +102,11 @@ func (manager *Manager) Listen(addr string, cert string, key string) {
 	go manager.manage(done)
 	go manager.proxy.Listen(manager.remoteConn)
 
-	err = manager.engine.Run(addr)
+	if manager.cert != "" && manager.key != "" {
+		err = manager.engine.RunTLS(manager.addr, manager.cert, manager.key)
+	} else {
+		err = manager.engine.Run(manager.addr)
+	}
 
 	if err != nil {
 		log.Println("Error on listen", err)

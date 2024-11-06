@@ -11,12 +11,19 @@ import (
 
 type Proxy struct {
 	listener net.Listener
+	addr     string
+	cert     string
+	key      string
 }
 
 func SetupProxy(addr string, certFile, keyFile string) *Proxy {
 	var listener net.Listener
 	var err error
-	proxy := Proxy{}
+	proxy := Proxy{
+		addr: addr,
+		cert: certFile,
+		key:  keyFile,
+	}
 	if certFile != "" && keyFile != "" {
 		listener, err = proxy.serveTLS(addr, certFile, keyFile)
 	} else {
@@ -51,6 +58,7 @@ func (p *Proxy) serveTLS(addr string, certFile, keyFile string) (net.Listener, e
 }
 
 func (proxy *Proxy) Listen(manager chan *common.RemoteConn) {
+	log.Println("Listening proxy on", proxy.addr)
 	for {
 		conn, err := proxy.listener.Accept()
 		if err != nil {

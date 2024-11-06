@@ -2,6 +2,7 @@ package db
 
 import (
 	"log"
+	"os"
 
 	"github.com/jinzhu/gorm"
 	_ "github.com/jinzhu/gorm/dialects/postgres"
@@ -22,7 +23,9 @@ func NewConnection() (*gorm.DB, error) {
 		" sslmode=" + conf.Database.SslMode +
 		" password=" + conf.Database.Password
 	connection, err := gorm.Open("postgres", dsn)
-	connection.LogMode(true)
+	if os.Getenv("DEBUG") == "true" {
+		connection.LogMode(true)
+	}
 
 	if err != nil {
 		return nil, err
