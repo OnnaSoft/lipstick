@@ -3,6 +3,7 @@ package manager
 import (
 	"log"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/juliotorresmoreno/lipstick/helper"
@@ -24,7 +25,28 @@ func configureRouter(manager *Manager) {
 }
 
 func (r *router) health(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	host := c.Request.Host
+	domainName := strings.Split(host, ":")[0]
+
+	if domain, ok := r.manager.domains[domainName]; ok {
+		c.JSON(http.StatusOK, gin.H{
+			"status":      "ok",
+			"domain":      domain.Name,
+			"consumption": domain.total,
+		})
+		return
+	}
+
+	domain, err := r.manager.authManager.GetDomain(domainName)
+	if err != nil {
+		c.String(http.StatusNotFound, "Domain not found")
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"status": "ok",
+		"domain": domain.Name,
+	})
 }
 
 func (r *router) upgrade(c *gin.Context) {
@@ -48,7 +70,7 @@ func (r *router) upgrade(c *gin.Context) {
 		return
 	}
 
-	r.manager.registerWebsocketConn <- &websocketConn{
+	r.manager.registerDomain <- &websocketConn{
 		Domain:        domain.Name,
 		Conn:          wsConn,
 		AllowMultiple: true,
@@ -56,9 +78,16 @@ func (r *router) upgrade(c *gin.Context) {
 }
 
 func (r *router) request(c *gin.Context) {
-	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
+	wsConn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		log.Println("Unable to upgrade connection", err)
+		return
+	}
+
+	domainName, err := helper.GetDomainName(wsConn.NetConn())
+	if err != nil {
+		log.Println("Unable to get domain name", err)
+		wsConn.Close()
 		return
 	}
 
@@ -66,5 +95,10 @@ func (r *router) request(c *gin.Context) {
 	if !ok {
 		return
 	}
-	r.manager.request <- &request{uuid: uuid, conn: conn}
+	domain, ok := r.manager.domains[domainName]
+	if !ok {
+		return
+	}
+
+	domain.request <- &request{uuid: uuid, conn: wsConn}
 }

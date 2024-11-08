@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -78,6 +79,32 @@ func ping(connection *websocket.Conn) {
 	}
 }
 
+func parseEndpoint(endpoint string) (string, string) {
+	var scheme, address string
+
+	// Comprobar el esquema del endpoint
+	switch {
+	case strings.HasPrefix(endpoint, "tcp://"):
+		scheme = "tcp"
+		address = strings.TrimPrefix(endpoint, "tcp://")
+	case strings.HasPrefix(endpoint, "tls://"):
+		scheme = "tls"
+		address = strings.TrimPrefix(endpoint, "tls://")
+	case strings.HasPrefix(endpoint, "http://"):
+		scheme = "http"
+		address = strings.TrimPrefix(endpoint, "http://")
+	case strings.HasPrefix(endpoint, "https://"):
+		scheme = "https"
+		address = strings.TrimPrefix(endpoint, "https://")
+	default:
+		// Caso sin prefijo
+		scheme = "tcp"
+		address = endpoint
+	}
+
+	return scheme, address
+}
+
 func readRump(connection *websocket.Conn, proxyPass string) {
 	defer close(done)
 	defer func() {
@@ -94,8 +121,10 @@ func readRump(connection *websocket.Conn, proxyPass string) {
 		}{}
 		json.Unmarshal(message, &content)
 
+		protocol, proxyPass := parseEndpoint(proxyPass)
+
 		if content.UUID != "" {
-			go connect(proxyPass, content.UUID)
+			go connect(protocol, proxyPass, content.UUID)
 		}
 	}
 }
@@ -117,35 +146,61 @@ var badGatewayContent = `<!DOCTYPE html>
 
 var badGatewayResponse = badGatewayHeader + fmt.Sprint(len(badGatewayContent)) + "\n\n" + badGatewayContent
 
-func connect(proxyPass, uuid string) {
+func connect(protocol, proxyPass, uuid string) {
 	url := serverUrl + "/" + uuid
 
-	tlsConfig := &tls.Config{
-		InsecureSkipVerify: true, // Ignorar la verificación del certificado
-	}
-
-	// Crear un marcador con la configuración TLS personalizada
+	// Configuración para el cliente WebSocket
 	dialer := websocket.DefaultDialer
-	dialer.TLSClientConfig = tlsConfig
-
-	// Establecer un tiempo de espera para la conexión
 	dialer.HandshakeTimeout = 5 * time.Second
 
+	// Conectar al WebSocket
 	connection, _, err := dialer.Dial(url, nil)
 	if err != nil {
+		log.Printf("Error connecting to WebSocket server: %v\n", err)
 		return
 	}
 	defer connection.Close()
 
 	conn := helper.NewWebSocketIO(connection)
-	remote, err := net.Dial("tcp", proxyPass)
+	fmt.Println("Connected to server:", proxyPass)
+
+	// Conectar al servidor remoto usando HTTPS, TLS o TCP según el protocolo
+	var remote net.Conn
+	switch protocol {
+	case "tls", "https":
+		// Configuración TLS para la conexión remota
+		tlsConfig := &tls.Config{
+			InsecureSkipVerify: true, // Usar solo en pruebas; desactiva en producción para verificar el certificado del servidor
+		}
+		remote, err = tls.Dial("tcp", proxyPass, tlsConfig)
+	default:
+		remote, err = net.Dial("tcp", proxyPass)
+	}
+
 	if err != nil {
-		log.Println("remote host is not available")
+		log.Println("Remote host is not available:", err)
 		fmt.Fprint(conn, badGatewayResponse)
 		return
 	}
 	defer remote.Close()
+	fmt.Println("Connected to remote host:", proxyPass)
 
-	go helper.Copy(conn, remote)
-	helper.Copy(remote, conn)
+	if protocol == "http" || protocol == "https" {
+		err = helper.HTTPBypass(conn, remote, proxyPass, protocol)
+		if err != nil {
+			log.Printf("Error preparing HTTP connection: %v\n", err)
+			return
+		}
+		return
+	}
+
+	// Copiar tráfico validando que la solicitud HTTP tenga el host correcto
+	go func() {
+		_, err := io.Copy(remote, conn)
+		if err != nil {
+			log.Printf("Error during host validation or data transfer: %v\n", err)
+			return
+		}
+	}()
+	io.Copy(conn, remote)
 }

@@ -3,17 +3,11 @@ package manager
 import (
 	"fmt"
 	"log"
-	"net"
 	"net/http"
-	"time"
-
-	"math/rand"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/juliotorresmoreno/lipstick/common"
-	"github.com/juliotorresmoreno/lipstick/helper"
 	"github.com/juliotorresmoreno/lipstick/proxy"
 	"github.com/juliotorresmoreno/lipstick/server/auth"
 )
@@ -53,37 +47,31 @@ type websocketConn struct {
 }
 
 type Manager struct {
-	engine                  *gin.Engine
-	remoteConn              chan *common.RemoteConn
-	remoteConnections       map[string]net.Conn
-	websocketConn           map[string]map[*websocket.Conn]bool
-	userConnections         map[uint]uint
-	registerWebsocketConn   chan *websocketConn
-	unregisterWebsocketConn chan *websocketConn
-	request                 chan *request
-	proxy                   *proxy.Proxy
-	authManager             auth.AuthManager
-	addr                    string
-	cert                    string
-	key                     string
+	engine           *gin.Engine
+	domains          map[string]*Domain
+	remoteConn       chan *common.RemoteConn
+	registerDomain   chan *websocketConn
+	unregisterDomain chan string
+	proxy            *proxy.Proxy
+	authManager      auth.AuthManager
+	addr             string
+	cert             string
+	key              string
 }
 
 func SetupManager(proxy *proxy.Proxy, addr string, cert string, key string) *Manager {
 	gin.SetMode(gin.ReleaseMode)
 
 	manager := &Manager{
-		remoteConnections:       make(map[string]net.Conn),
-		websocketConn:           make(map[string]map[*websocket.Conn]bool),
-		registerWebsocketConn:   make(chan *websocketConn),
-		unregisterWebsocketConn: make(chan *websocketConn),
-		request:                 make(chan *request),
-		remoteConn:              make(chan *common.RemoteConn),
-		proxy:                   proxy,
-		authManager:             auth.MakeAuthManager(),
-		userConnections:         make(map[uint]uint),
-		addr:                    addr,
-		cert:                    cert,
-		key:                     key,
+		domains:          make(map[string]*Domain),
+		remoteConn:       make(chan *common.RemoteConn),
+		registerDomain:   make(chan *websocketConn),
+		unregisterDomain: make(chan string),
+		proxy:            proxy,
+		authManager:      auth.MakeAuthManager(),
+		addr:             addr,
+		cert:             cert,
+		key:              key,
 	}
 
 	configureRouter(manager)
@@ -114,79 +102,32 @@ func (manager *Manager) Listen() {
 	done <- struct{}{}
 }
 
-func (manager *Manager) alive(conn *websocketConn) {
-	for {
-		if _, _, err := conn.ReadMessage(); err != nil {
-			manager.unregisterWebsocketConn <- conn
-			break
-		}
-	}
-}
-
-func (manager *Manager) handle(dest *helper.WebSocketIO, pipe net.Conn) {
-	defer func() {
-		dest.Close()
-		pipe.Close()
-	}()
-
-	go helper.Copy(pipe, dest)
-	helper.Copy(dest, pipe)
-}
-
 func (manager *Manager) manage(done chan struct{}) {
+	defer fmt.Println("Manager closed")
 	for {
 		select {
-		case conn := <-manager.registerWebsocketConn:
-			if manager.websocketConn[conn.Domain] != nil {
-				if !conn.AllowMultiple && len(manager.websocketConn[conn.Domain]) > 0 {
-					conn.Close()
-					continue
-				}
+		case conn := <-manager.registerDomain:
+			if manager.domains[conn.Domain] == nil {
+				manager.domains[conn.Domain] = NewDomain(conn.Domain, manager.unregisterDomain)
+				go manager.domains[conn.Domain].listen()
 			}
-			if _, ok := manager.websocketConn[conn.Domain]; !ok {
-				manager.websocketConn[conn.Domain] = make(map[*websocket.Conn]bool)
+			manager.domains[conn.Domain].registerWebsocketConn <- conn
+			fmt.Println("Registered", conn.Domain)
+		case domain := <-manager.unregisterDomain:
+			if manager.domains[domain] != nil {
+				manager.domains[domain].done <- struct{}{}
+				delete(manager.domains, domain)
 			}
-			manager.websocketConn[conn.Domain][conn.Conn] = true
-			if manager.websocketConn != nil {
-				go manager.alive(conn)
-			}
-
-			fmt.Println("Connected", conn.Domain)
-		case unregisterConn := <-manager.unregisterWebsocketConn:
-			if manager.websocketConn[unregisterConn.Domain] == nil {
-				continue
-			}
-			unregisterConn.Close()
-			delete(manager.websocketConn[unregisterConn.Domain], unregisterConn.Conn)
-
-			fmt.Println("Disconnected", unregisterConn.Domain)
-		case request := <-manager.request:
-			dest := helper.NewWebSocketIO(request.conn)
-			pipe := manager.remoteConnections[request.uuid]
-			delete(manager.remoteConnections, request.uuid)
-			go manager.handle(dest, pipe)
+			fmt.Println("Unregistered", domain)
 		case remoteConn := <-manager.remoteConn:
-			ticket := uuid.NewString()
-			if manager.websocketConn[remoteConn.Domain] == nil {
+			fmt.Println("Remote connection", remoteConn.Domain)
+			if manager.domains[remoteConn.Domain] == nil {
 				fmt.Fprint(remoteConn, badGatewayResponse)
 				remoteConn.Close()
 				continue
 			}
-			manager.remoteConnections[ticket] = remoteConn
-			conns := make([]*websocket.Conn, 0, len(manager.websocketConn[remoteConn.Domain]))
-			for key := range manager.websocketConn[remoteConn.Domain] {
-				conns = append(conns, key)
-			}
-
-			if len(conns) == 0 {
-				fmt.Fprint(remoteConn, badGatewayResponse)
-				remoteConn.Close()
-				continue
-			}
-
-			rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
-			conn := conns[rnd.Intn(len(conns))]
-			conn.WriteJSON(map[string]string{"uuid": ticket})
+			domain := manager.domains[remoteConn.Domain]
+			domain.remoteConn <- remoteConn
 		case <-done:
 			return
 		}

@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"reflect"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
@@ -16,6 +17,26 @@ type WebSocketIO struct {
 
 func NewWebSocketIO(conn *websocket.Conn) *WebSocketIO {
 	return &WebSocketIO{conn: conn}
+}
+
+func (w *WebSocketIO) LocalAddr() net.Addr {
+	return w.conn.LocalAddr()
+}
+
+func (w *WebSocketIO) RemoteAddr() net.Addr {
+	return w.conn.RemoteAddr()
+}
+
+func (w *WebSocketIO) SetDeadline(t time.Time) error {
+	return w.conn.SetReadDeadline(t)
+}
+
+func (w *WebSocketIO) SetReadDeadline(t time.Time) error {
+	return w.conn.SetReadDeadline(t)
+}
+
+func (w *WebSocketIO) SetWriteDeadline(t time.Time) error {
+	return w.conn.SetWriteDeadline(t)
 }
 
 func (w *WebSocketIO) Close() (err error) {
