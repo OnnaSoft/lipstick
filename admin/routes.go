@@ -35,7 +35,7 @@ func isAuthorized(c *gin.Context) bool {
 		return false
 	}
 	authorization := c.Request.Header.Get("Authorization")
-	return authorization == conf.Keyword
+	return authorization == conf.AdminSecretKey
 }
 
 func (r *router) getDomains(c *gin.Context) {

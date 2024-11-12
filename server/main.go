@@ -22,14 +22,14 @@ func main() {
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt)
 
-	proxyAddr := conf.Proxy.Addr
-	managerAddr := conf.Manager.Addr
+	proxyAddr := conf.Proxy.Address
+	managerAddr := conf.Manager.Address
 
 	db.Migrate()
 
-	proxy := proxy.SetupProxy(proxyAddr, conf.Certs.Cert, conf.Certs.Key)
-	manager := manager.SetupManager(proxy, managerAddr, conf.Certs.Cert, conf.Certs.Key)
-	admin := admin.SetupAdmin(conf.Admin.Addr)
+	proxy := proxy.SetupProxy(proxyAddr, conf.TLS.CertificatePath, conf.TLS.KeyPath)
+	manager := manager.SetupManager(proxy, managerAddr, conf.TLS.CertificatePath, conf.TLS.KeyPath)
+	admin := admin.SetupAdmin(conf.Admin.Address)
 
 	go manager.Listen()
 	go admin.Listen()

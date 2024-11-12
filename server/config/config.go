@@ -11,108 +11,137 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-type Proxy struct {
-	Addr string `yaml:"addr"`
+type ProxyConfig struct {
+	Address string `yaml:"address"`
 }
 
-type Manager struct {
-	Addr string `yaml:"addr"`
+type ManagerConfig struct {
+	Address string `yaml:"address"`
 }
 
-type Admin struct {
-	Addr string `yaml:"addr"`
+type AdminConfig struct {
+	Address string `yaml:"address"`
 }
 
-type Certs struct {
-	Cert string `yaml:"cert"`
-	Key  string `yaml:"key"`
+type TLSConfig struct {
+	CertificatePath string `yaml:"certificate_path"`
+	KeyPath         string `yaml:"key_path"`
 }
 
-type Database struct {
+type DatabaseConfig struct {
 	Host     string `yaml:"host"`
 	Port     int    `yaml:"port"`
 	User     string `yaml:"user"`
 	Password string `yaml:"password"`
-	DbName   string `yaml:"dbname"`
-	SslMode  string `yaml:"sslmode"`
+	Database string `yaml:"database"`
+	SSLMode  string `yaml:"ssl_mode"`
 }
 
-type Config struct {
-	Keyword  string   `yaml:"keyword"`
-	Proxy    Proxy    `yaml:"proxy"`
-	Manager  Manager  `yaml:"manager"`
-	Admin    Admin    `yaml:"admin"`
-	Certs    Certs    `yaml:"certs"`
-	Database Database `yaml:"database"`
+type RedisConfig struct {
+	Host     string `yaml:"host"`
+	Port     int    `yaml:"port"`
+	Password string `yaml:"password"`
+	Database int    `yaml:"database"`
 }
 
-var config interface{}
+type AppConfig struct {
+	AdminSecretKey string         `yaml:"admin_secret_key"`
+	Proxy          ProxyConfig    `yaml:"proxy"`
+	Manager        ManagerConfig  `yaml:"manager"`
+	Admin          AdminConfig    `yaml:"admin"`
+	TLS            TLSConfig      `yaml:"tls"`
+	Database       DatabaseConfig `yaml:"database"`
+	Redis          RedisConfig    `yaml:"redis"`
+}
+
+var appConfig AppConfig
 
 func loadConfig() {
-	var configPath = ""
-	var adminAddr = ""
-	var managerAddr = ""
-	var proxyAddr = ""
-	var secret = ""
-	var cert = ""
-	var key = ""
+	var configPath string
+	var adminAddress string
+	var managerAddress string
+	var proxyAddress string
+	var adminSecretKey string
+	var tlsCert string
+	var tlsKey string
+	var redisHost string
+	var redisPort int
+	var redisPassword string
+	var redisDatabase int
 
-	result := Config{
-		Admin: Admin{
-			Addr: ":5052",
+	// Default configuration
+	defaultConfig := AppConfig{
+		Admin: AdminConfig{
+			Address: ":5052",
 		},
-		Manager: Manager{
-			Addr: ":5051",
+		Manager: ManagerConfig{
+			Address: ":5051",
 		},
-		Proxy: Proxy{
-			Addr: ":5050",
+		Proxy: ProxyConfig{
+			Address: ":5050",
+		},
+		Redis: RedisConfig{
+			Host:     "localhost",
+			Port:     6379,
+			Database: 0,
 		},
 	}
 
-	configPathDefault := "/etc/lipstick/config.yml"
-	flag.StringVar(&configPath, "c", configPathDefault, "config path")
-	flag.StringVar(&adminAddr, "a", "", "Port where you will get all requests from local network or internet")
-	flag.StringVar(&managerAddr, "m", "", "Port where your client will connect via websocket. You can manage it in your firewall")
-	flag.StringVar(&proxyAddr, "p", "", "Port where you will get all requests from local network or internet")
-	flag.StringVar(&secret, "k", "", "Private secret use to autenticate nodes")
-
-	flag.StringVar(&cert, "cert", "", "Path to the certificate file")
-	flag.StringVar(&key, "key", "", "Path to the key file")
+	// Command-line flags
+	flag.StringVar(&configPath, "c", "/etc/lipstick/config.yml", "Path to the configuration file")
+	flag.StringVar(&adminAddress, "admin-addr", "", "Address for the admin API")
+	flag.StringVar(&managerAddress, "manager-addr", "", "Address for WebSocket manager connections")
+	flag.StringVar(&proxyAddress, "proxy-addr", "", "Address for the proxy")
+	flag.StringVar(&adminSecretKey, "admin-secret", "", "Secret key for admin API authorization")
+	flag.StringVar(&tlsCert, "tls-cert", "", "Path to the TLS certificate")
+	flag.StringVar(&tlsKey, "tls-key", "", "Path to the TLS key")
+	flag.StringVar(&redisHost, "redis-host", "", "Redis host")
+	flag.IntVar(&redisPort, "redis-port", 0, "Redis port")
+	flag.StringVar(&redisPassword, "redis-password", "", "Redis password")
+	flag.IntVar(&redisDatabase, "redis-db", 0, "Redis database index")
 
 	flag.Parse()
 
+	// Read configuration from file
 	f, err := os.Open(configPath)
 	if err == nil {
+		defer f.Close()
 		buff, err := io.ReadAll(f)
-		if err != nil {
-			return
-		}
-		err = yaml.Unmarshal(buff, &result)
-		if err != nil {
-			return
+		if err == nil {
+			err = yaml.Unmarshal(buff, &defaultConfig)
+			if err != nil {
+				log.Printf("Error parsing configuration file: %v", err)
+			}
 		}
 	}
 
-	result.Proxy.Addr = helper.SetValue(proxyAddr, result.Proxy.Addr).(string)
-	result.Manager.Addr = helper.SetValue(managerAddr, result.Manager.Addr).(string)
-	result.Keyword = helper.SetValue(secret, result.Keyword).(string)
+	// Override with command-line arguments
+	defaultConfig.Proxy.Address = helper.SetValue(proxyAddress, defaultConfig.Proxy.Address).(string)
+	defaultConfig.Manager.Address = helper.SetValue(managerAddress, defaultConfig.Manager.Address).(string)
+	defaultConfig.Admin.Address = helper.SetValue(adminAddress, defaultConfig.Admin.Address).(string)
+	defaultConfig.AdminSecretKey = helper.SetValue(adminSecretKey, defaultConfig.AdminSecretKey).(string)
+	defaultConfig.TLS.CertificatePath = helper.SetValue(tlsCert, defaultConfig.TLS.CertificatePath).(string)
+	defaultConfig.TLS.KeyPath = helper.SetValue(tlsKey, defaultConfig.TLS.KeyPath).(string)
 
-	result.Certs.Cert = helper.SetValue(cert, result.Certs.Cert).(string)
-	result.Certs.Key = helper.SetValue(key, result.Certs.Key).(string)
+	// Redis configuration
+	defaultConfig.Redis.Host = helper.SetValue(redisHost, defaultConfig.Redis.Host).(string)
+	defaultConfig.Redis.Port = helper.SetValue(redisPort, defaultConfig.Redis.Port).(int)
+	defaultConfig.Redis.Password = helper.SetValue(redisPassword, defaultConfig.Redis.Password).(string)
+	defaultConfig.Redis.Database = helper.SetValue(redisDatabase, defaultConfig.Redis.Database).(int)
 
-	config = result
+	appConfig = defaultConfig
 }
 
-func GetConfig() (Config, error) {
-	if config != nil {
-		return config.(Config), nil
+func GetConfig() (AppConfig, error) {
+	if appConfig.AdminSecretKey != "" {
+		return appConfig, nil
 	}
 
 	loadConfig()
 
-	if config == nil {
-		log.Fatal(errors.New("could not load config"))
+	if appConfig.AdminSecretKey == "" {
+		log.Fatal(errors.New("failed to load configuration"))
 	}
 
-	return config.(Config), nil
+	return appConfig, nil
 }

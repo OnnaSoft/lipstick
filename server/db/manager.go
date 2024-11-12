@@ -19,8 +19,8 @@ func NewConnection() (*gorm.DB, error) {
 
 	dsn := "host=" + conf.Database.Host +
 		" user=" + conf.Database.User +
-		" dbname=" + conf.Database.DbName +
-		" sslmode=" + conf.Database.SslMode +
+		" dbname=" + conf.Database.Database +
+		" sslmode=" + conf.Database.SSLMode +
 		" password=" + conf.Database.Password
 	connection, err := gorm.Open("postgres", dsn)
 	if os.Getenv("DEBUG") == "true" {
