@@ -41,8 +41,8 @@ var badGatewayContent = `<!DOCTYPE html>
 var badGatewayResponse = badGatewayHeader + fmt.Sprint(len(badGatewayContent)) + "\n\n" + badGatewayContent
 
 type websocketConn struct {
-	Domain        string
-	AllowMultiple bool
+	Domain                   string
+	AllowMultipleConnections bool
 	*websocket.Conn
 }
 

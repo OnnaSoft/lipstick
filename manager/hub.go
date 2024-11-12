@@ -47,7 +47,6 @@ func NewNetworkHub(name string, unregister chan string) *NetworkHub {
 func (hub *NetworkHub) syncConnections(pipe net.Conn, destination *websocket.Conn) {
 	defer pipe.Close()
 	defer destination.Close()
-	defer fmt.Println("Conexión cerrada")
 	go func() {
 		defer pipe.Close()
 		defer destination.Close()
@@ -94,7 +93,7 @@ func (hub *NetworkHub) listen() {
 	for {
 		select {
 		case conn := <-hub.registerWebSocket:
-			if !conn.AllowMultiple && len(hub.webSocketConnections) > 0 {
+			if !conn.AllowMultipleConnections && len(hub.webSocketConnections) > 0 {
 				conn.Close()
 				continue
 			}

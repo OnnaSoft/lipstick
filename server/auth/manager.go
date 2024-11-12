@@ -6,9 +6,10 @@ type User struct {
 }
 
 type Domain struct {
-	ID     uint   `json:"id"`
-	Name   string `json:"name"`
-	ApiKey string `json:"apiKey"`
+	ID                       uint   `json:"id"`
+	Name                     string `json:"name"`
+	ApiKey                   string `json:"apiKey"`
+	AllowMultipleConnections bool   `json:"allowMultipleConnections"`
 }
 
 type AuthManager interface {
