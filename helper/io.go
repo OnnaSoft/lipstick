@@ -1,13 +1,10 @@
 package helper
 
 import (
-	"bufio"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
-	"strings"
-	"time"
 )
 
 // CopyData transfiere datos desde la conexión de origen (src) hacia la conexión de destino (dst).
@@ -50,96 +47,6 @@ func CopyData(destination, source net.Conn) (int64, error) {
 
 	fmt.Println("Copia completa. Total de bytes escritos:", totalBytesWritten)
 	return totalBytesWritten, nil
-}
-
-// HandleTcpBypass maneja solicitudes TCP y las redirige al servidor de destino.
-func HandleTcpBypass(clientConnection net.Conn, proxyTarget string, protocol string) error {
-	defer func() {
-		fmt.Println("Cerrando conexión TCP")
-	}()
-	host := strings.Split(proxyTarget, ":")[0]
-	reader := bufio.NewReader(clientConnection)
-	clientRequest, err := http.ReadRequest(reader)
-	if err != nil {
-		return fmt.Errorf("error reading HTTP request: %w", err)
-	}
-
-	if protocol != "http" && protocol != "https" {
-		protocol = "http"
-	}
-	serverURL := protocol + "://" + proxyTarget + clientRequest.URL.String()
-	clientRequest.Host = host
-
-	if clientRequest.Header.Get("Upgrade") == "websocket" {
-		serverConnection, err := net.Dial("tcp", proxyTarget)
-		if err != nil {
-			return fmt.Errorf("error connecting to WebSocket server: %w", err)
-		}
-		//defer serverConnection.Close()
-
-		_, err = serverConnection.Write([]byte(HTTPRequestToString(clientRequest)))
-		if err != nil {
-			return fmt.Errorf("error sending HTTP upgrade request to server: %w", err)
-		}
-
-		responseReader := bufio.NewReader(serverConnection)
-		serverResponse, err := http.ReadResponse(responseReader, clientRequest)
-		if err != nil {
-			return fmt.Errorf("error reading HTTP upgrade response from server: %w", err)
-		}
-		defer serverResponse.Body.Close()
-
-		responseBytes := HTTPResponseToBytes(serverResponse)
-		_, err = clientConnection.Write(responseBytes)
-		if err != nil {
-			return fmt.Errorf("error sending HTTP upgrade response to client: %w", err)
-		}
-
-		go func() {
-			for {
-				time.Sleep(5 * time.Second)
-				fmt.Println("Enviando ping a serverConnection..")
-				_, err := serverConnection.Write([]byte("hola mundo"))
-				if err != nil {
-					fmt.Println("Error al enviar ping a serverConnection:", err)
-					serverConnection.Close()
-					break
-				}
-				time.Sleep(10 * time.Second)
-			}
-		}()
-		go func() {
-			for {
-				time.Sleep(5 * time.Second)
-				fmt.Println("Enviando ping a clientConnection...")
-				_, err := clientConnection.Write([]byte("hola mundo"))
-				if err != nil {
-					fmt.Println("Error al enviar ping a clientConnection:", err)
-					clientConnection.Close()
-					break
-				}
-				time.Sleep(10 * time.Second)
-			}
-		}()
-
-		/*go func() {
-			CopyData(serverConnection, clientConnection)
-		}()
-		CopyData(clientConnection, serverConnection)*/
-		time.Sleep(1 * time.Hour)
-
-		return nil
-	}
-
-	requestToServer, err := http.NewRequest(clientRequest.Method, serverURL, clientRequest.Body)
-	if err != nil {
-		return fmt.Errorf("error creating HTTP request: %w", err)
-	}
-	serverResponse, err := http.DefaultClient.Do(requestToServer)
-	if err != nil {
-		return fmt.Errorf("error sending HTTP request: %w", err)
-	}
-	return serverResponse.Write(clientConnection)
 }
 
 // HTTPRequestToString convierte una solicitud HTTP en una cadena para ser enviada como texto plano.

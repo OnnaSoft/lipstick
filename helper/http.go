@@ -123,30 +123,6 @@ func GetDomainName(conn net.Conn) (string, error) {
 	return domain, nil
 }
 
-func ReadAllMessages(connection *websocket.Conn) ([]byte, error) {
-	var buffer []byte
-
-	connection.SetWriteDeadline(time.Now().Add(10 * time.Second))
-
-	for {
-		messageType, message, err := connection.ReadMessage()
-		fmt.Println("Message type:", messageType, "Message:", string(message))
-		if err != nil {
-			return buffer, err
-		}
-		if messageType != websocket.TextMessage && messageType != websocket.BinaryMessage {
-			return buffer, io.EOF
-		}
-
-		// Verificar el tamaño del búfer antes de copiar
-		if len(message) > len(buffer) {
-			return buffer, io.ErrShortBuffer
-		}
-
-		copy(buffer, message)
-	}
-}
-
 func IsHTTPRequest(data string) bool {
 	// Dividir el string en líneas
 	lines := strings.Split(data, "\n")
