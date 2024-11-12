@@ -1,7 +1,6 @@
 package manager
 
 import (
-	"fmt"
 	"log"
 	"net/http"
 	"strings"
@@ -29,10 +28,7 @@ func (r *router) health(c *gin.Context) {
 	host := c.Request.Host
 	domainName := strings.Split(host, ":")[0]
 
-	fmt.Println("Domain:", domainName)
-
 	if domain, ok := r.manager.hubs[domainName]; ok {
-		fmt.Println("Domain found")
 		c.JSON(http.StatusOK, gin.H{
 			"status":     "ok",
 			"domain":     domain.HubName,
