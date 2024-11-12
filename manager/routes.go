@@ -1,6 +1,7 @@
 package manager
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"strings"
@@ -28,11 +29,14 @@ func (r *router) health(c *gin.Context) {
 	host := c.Request.Host
 	domainName := strings.Split(host, ":")[0]
 
-	if domain, ok := r.manager.domains[domainName]; ok {
+	fmt.Println("Domain:", domainName)
+
+	if domain, ok := r.manager.hubs[domainName]; ok {
+		fmt.Println("Domain found")
 		c.JSON(http.StatusOK, gin.H{
-			"status":      "ok",
-			"domain":      domain.Name,
-			"consumption": domain.total,
+			"status":     "ok",
+			"domain":     domain.HubName,
+			"data_usage": domain.totalDataTransferred,
 		})
 		return
 	}
@@ -95,10 +99,10 @@ func (r *router) request(c *gin.Context) {
 	if !ok {
 		return
 	}
-	domain, ok := r.manager.domains[domainName]
+	domain, ok := r.manager.hubs[domainName]
 	if !ok {
 		return
 	}
 
-	domain.request <- &request{uuid: uuid, conn: wsConn}
+	domain.serverRequests <- &request{uuid: uuid, conn: wsConn}
 }

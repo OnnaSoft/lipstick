@@ -6,58 +6,60 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"os"
 	"strings"
+	"time"
 )
 
-func Copy(dst, src net.Conn) (int64, error) {
-	var totalWritten int64 = 0
-	buff := make([]byte, 32*1024) // Tamaño del buffer de 32 KB
+// CopyData transfiere datos desde la conexión de origen (src) hacia la conexión de destino (dst).
+func CopyData(destination, source net.Conn) (int64, error) {
+	var totalBytesWritten int64
+	buffer := make([]byte, 32*1024) // Tamaño del buffer: 32 KB
 
 	for {
 		// Leer datos del origen
-		n, readErr := src.Read(buff)
-		if n > 0 {
+		bytesRead, readErr := source.Read(buffer)
+		if bytesRead > 0 {
 			// Escribir datos en el destino
-			w, writeErr := dst.Write(buff[:n])
-			totalWritten += int64(w)
-			os.Stdout.Write(buff[:n])
+			bytesWritten, writeErr := destination.Write(buffer[:bytesRead])
+			totalBytesWritten += int64(bytesWritten)
+			//os.Stdout.Write(buffer[:bytesRead])
 
 			// Manejar errores de escritura
 			if writeErr != nil {
-				// Mensaje de cierre claro
 				fmt.Println("Error: conexión de escritura cerrada durante la escritura.")
-				return totalWritten, fmt.Errorf("error writing to destination: %w", writeErr)
+				return totalBytesWritten, fmt.Errorf("error writing to destination: %w", writeErr)
 			}
 
 			// Verificar si se escribió menos de lo leído
-			if w < n {
+			if bytesWritten < bytesRead {
 				fmt.Println("Error: escritura parcial detectada.")
-				return totalWritten, fmt.Errorf("partial write: wrote %d of %d bytes", w, n)
+				return totalBytesWritten, fmt.Errorf("partial write: wrote %d of %d bytes", bytesWritten, bytesRead)
 			}
 		}
 
 		// Manejar errores de lectura
 		if readErr != nil {
 			if readErr == io.EOF {
-				// EOF indica que no hay más datos para leer
 				fmt.Println("EOF alcanzado: conexión de lectura cerrada.")
 				break
 			}
-			// Otros errores se devuelven directamente
 			fmt.Println("Error: conexión de lectura cerrada inesperadamente.")
-			return totalWritten, fmt.Errorf("error reading from source: %w", readErr)
+			return totalBytesWritten, fmt.Errorf("error reading from source: %w", readErr)
 		}
 	}
 
-	// Retorna el total de bytes escritos y el error (si aplica)
-	fmt.Println("Copia completa. Total de bytes escritos:", totalWritten)
-	return totalWritten, nil
+	fmt.Println("Copia completa. Total de bytes escritos:", totalBytesWritten)
+	return totalBytesWritten, nil
 }
-func TcpBypass(conn net.Conn, proxyPass string, protocol string) error {
-	host := strings.Split(proxyPass, ":")[0]
-	reader := bufio.NewReader(conn)
-	request, err := http.ReadRequest(reader)
+
+// HandleTcpBypass maneja solicitudes TCP y las redirige al servidor de destino.
+func HandleTcpBypass(clientConnection net.Conn, proxyTarget string, protocol string) error {
+	defer func() {
+		fmt.Println("Cerrando conexión TCP")
+	}()
+	host := strings.Split(proxyTarget, ":")[0]
+	reader := bufio.NewReader(clientConnection)
+	clientRequest, err := http.ReadRequest(reader)
 	if err != nil {
 		return fmt.Errorf("error reading HTTP request: %w", err)
 	}
@@ -65,75 +67,105 @@ func TcpBypass(conn net.Conn, proxyPass string, protocol string) error {
 	if protocol != "http" && protocol != "https" {
 		protocol = "http"
 	}
-	url := protocol + "://" + proxyPass + request.URL.String()
-	request.Host = host
+	serverURL := protocol + "://" + proxyTarget + clientRequest.URL.String()
+	clientRequest.Host = host
 
-	if request.Header.Get("Upgrade") == "websocket" {
-		serverConn, err := net.Dial("tcp", proxyPass)
+	if clientRequest.Header.Get("Upgrade") == "websocket" {
+		serverConnection, err := net.Dial("tcp", proxyTarget)
 		if err != nil {
 			return fmt.Errorf("error connecting to WebSocket server: %w", err)
 		}
-		defer serverConn.Close()
+		//defer serverConnection.Close()
 
-		_, err = serverConn.Write([]byte(requestToString(request)))
+		_, err = serverConnection.Write([]byte(HTTPRequestToString(clientRequest)))
 		if err != nil {
 			return fmt.Errorf("error sending HTTP upgrade request to server: %w", err)
 		}
 
-		responseReader := bufio.NewReader(serverConn)
-		response, err := http.ReadResponse(responseReader, request)
+		responseReader := bufio.NewReader(serverConnection)
+		serverResponse, err := http.ReadResponse(responseReader, clientRequest)
 		if err != nil {
 			return fmt.Errorf("error reading HTTP upgrade response from server: %w", err)
 		}
-		defer response.Body.Close()
+		defer serverResponse.Body.Close()
 
-		responseBytes := responseToBytes(response)
-		_, err = conn.Write(responseBytes)
+		responseBytes := HTTPResponseToBytes(serverResponse)
+		_, err = clientConnection.Write(responseBytes)
 		if err != nil {
 			return fmt.Errorf("error sending HTTP upgrade response to client: %w", err)
 		}
 
 		go func() {
-			io.Copy(serverConn, conn)
+			for {
+				time.Sleep(5 * time.Second)
+				fmt.Println("Enviando ping a serverConnection..")
+				_, err := serverConnection.Write([]byte("hola mundo"))
+				if err != nil {
+					fmt.Println("Error al enviar ping a serverConnection:", err)
+					serverConnection.Close()
+					break
+				}
+				time.Sleep(10 * time.Second)
+			}
 		}()
-		io.Copy(conn, serverConn)
+		go func() {
+			for {
+				time.Sleep(5 * time.Second)
+				fmt.Println("Enviando ping a clientConnection...")
+				_, err := clientConnection.Write([]byte("hola mundo"))
+				if err != nil {
+					fmt.Println("Error al enviar ping a clientConnection:", err)
+					clientConnection.Close()
+					break
+				}
+				time.Sleep(10 * time.Second)
+			}
+		}()
+
+		/*go func() {
+			CopyData(serverConnection, clientConnection)
+		}()
+		CopyData(clientConnection, serverConnection)*/
+		time.Sleep(1 * time.Hour)
 
 		return nil
 	}
 
-	req, err := http.NewRequest(request.Method, url, request.Body)
+	requestToServer, err := http.NewRequest(clientRequest.Method, serverURL, clientRequest.Body)
 	if err != nil {
 		return fmt.Errorf("error creating HTTP request: %w", err)
 	}
-	response, err := http.DefaultClient.Do(req)
+	serverResponse, err := http.DefaultClient.Do(requestToServer)
 	if err != nil {
 		return fmt.Errorf("error sending HTTP request: %w", err)
 	}
-	return response.Write(conn)
+	return serverResponse.Write(clientConnection)
 }
 
-func requestToString(req *http.Request) string {
-	var result string
-	result += fmt.Sprintf("%s %s %s\r\n", req.Method, req.URL.RequestURI(), req.Proto)
-	for k, v := range req.Header {
-		for _, value := range v {
-			result += fmt.Sprintf("%s: %s\r\n", k, value)
+// HTTPRequestToString convierte una solicitud HTTP en una cadena para ser enviada como texto plano.
+func HTTPRequestToString(request *http.Request) string {
+	var requestString string
+	requestString += fmt.Sprintf("%s %s %s\r\n", request.Method, request.URL.RequestURI(), request.Proto)
+	for key, values := range request.Header {
+		for _, value := range values {
+			requestString += fmt.Sprintf("%s: %s\r\n", key, value)
 		}
 	}
-	result += "\r\n"
-	return result
+	requestString += "\r\n"
+	return requestString
 }
 
-func responseToBytes(res *http.Response) []byte {
-	var buf []byte
-	buf = append(buf, fmt.Sprintf("%s %d %s\r\n", res.Proto, res.StatusCode, res.Status)...)
-	for k, v := range res.Header {
-		for _, value := range v {
-			buf = append(buf, fmt.Sprintf("%s: %s\r\n", k, value)...)
+// HTTPResponseToBytes convierte una respuesta HTTP en un arreglo de bytes para ser enviada al cliente.
+func HTTPResponseToBytes(response *http.Response) []byte {
+	var buffer []byte
+	buffer = append(buffer, fmt.Sprintf("%s %d %s\r\n", response.Proto, response.StatusCode, response.Status)...)
+	for key, values := range response.Header {
+		for _, value := range values {
+			buffer = append(buffer, fmt.Sprintf("%s: %s\r\n", key, value)...)
 		}
 	}
-	buf = append(buf, "\r\n"...)
-	body, _ := io.ReadAll(res.Body)
-	buf = append(buf, body...)
-	return buf
+	buffer = append(buffer, "\r\n"...)
+	body, _ := io.ReadAll(response.Body)
+	buffer = append(buffer, body...)
+	return buffer
 }

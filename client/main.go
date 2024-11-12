@@ -4,7 +4,9 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -16,56 +18,56 @@ import (
 	"github.com/juliotorresmoreno/lipstick/helper"
 )
 
-var conf, _ = config.GetConfig()
-var serverUrl = conf.ServerUrl
+var configuration, _ = config.GetConfig()
+var baseServerURL = configuration.ServerUrl
 
 func main() {
-	interrupt := make(chan os.Signal, 1)
-	signal.Notify(interrupt, os.Interrupt)
+	interruptChannel := make(chan os.Signal, 1)
+	signal.Notify(interruptChannel, os.Interrupt)
 
-	// Crear configuración TLS personalizada para ignorar la verificación del certificado SSL
-	tlsConfig := &tls.Config{
+	// Configuración TLS personalizada para ignorar la verificación del certificado SSL
+	tlsConfiguration := &tls.Config{
 		InsecureSkipVerify: true, // Ignorar la verificación del certificado
 	}
 
 	// Crear un marcador con la configuración TLS personalizada
-	dialer := websocket.DefaultDialer
-	dialer.TLSClientConfig = tlsConfig
+	websocketDialer := websocket.DefaultDialer
+	websocketDialer.TLSClientConfig = tlsConfiguration
 
 	// Establecer un tiempo de espera para la conexión
-	dialer.HandshakeTimeout = 5 * time.Second
+	websocketDialer.HandshakeTimeout = 5 * time.Second
 
-	fmt.Println(serverUrl, conf.ProxyPass)
+	fmt.Println(baseServerURL, configuration.ProxyPass)
 
-	for _, proxyPass := range conf.ProxyPass {
-		go func(proxyPass string) {
-			sleep := 3 * time.Second
+	for _, proxyTarget := range configuration.ProxyPass {
+		go func(proxyTarget string) {
+			retryDelay := 3 * time.Second
 			for {
-				url := serverUrl
+				websocketURL := baseServerURL
 				headers := http.Header{}
-				headers.Set("authorization", conf.Keyword)
+				headers.Set("authorization", configuration.Keyword)
 
-				connection, _, err := dialer.Dial(url, headers)
+				connection, _, err := websocketDialer.Dial(websocketURL, headers)
 				if err != nil {
 					fmt.Println("Error al conectar al servidor WebSocket:", err)
-					time.Sleep(sleep)
+					time.Sleep(retryDelay)
 					continue
 				}
 				fmt.Println("Cliente WebSocket iniciado. Presiona Ctrl+C para salir.")
 
-				go ping(connection)
-				serve(connection, proxyPass)
-				time.Sleep(sleep)
+				go sendPingMessages(connection)
+				handleWebSocketMessages(connection, proxyTarget)
+				time.Sleep(retryDelay)
 				connection.Close()
 			}
-		}(proxyPass)
+		}(proxyTarget)
 	}
 
-	<-interrupt
+	<-interruptChannel
 	fmt.Println("Desconectando...")
 }
 
-func ping(connection *websocket.Conn) {
+func sendPingMessages(connection *websocket.Conn) {
 	defer func() {
 		recover()
 	}()
@@ -78,33 +80,33 @@ func ping(connection *websocket.Conn) {
 	}
 }
 
-func parseEndpoint(endpoint string) (string, string) {
-	var scheme, address string
+func parseTargetEndpoint(target string) (string, string) {
+	var protocol, address string
 
-	// Comprobar el esquema del endpoint
+	// Comprobar el esquema del target
 	switch {
-	case strings.HasPrefix(endpoint, "tcp://"):
-		scheme = "tcp"
-		address = strings.TrimPrefix(endpoint, "tcp://")
-	case strings.HasPrefix(endpoint, "tls://"):
-		scheme = "tls"
-		address = strings.TrimPrefix(endpoint, "tls://")
-	case strings.HasPrefix(endpoint, "http://"):
-		scheme = "http"
-		address = strings.TrimPrefix(endpoint, "http://")
-	case strings.HasPrefix(endpoint, "https://"):
-		scheme = "https"
-		address = strings.TrimPrefix(endpoint, "https://")
+	case strings.HasPrefix(target, "tcp://"):
+		protocol = "tcp"
+		address = strings.TrimPrefix(target, "tcp://")
+	case strings.HasPrefix(target, "tls://"):
+		protocol = "tls"
+		address = strings.TrimPrefix(target, "tls://")
+	case strings.HasPrefix(target, "http://"):
+		protocol = "http"
+		address = strings.TrimPrefix(target, "http://")
+	case strings.HasPrefix(target, "https://"):
+		protocol = "https"
+		address = strings.TrimPrefix(target, "https://")
 	default:
 		// Caso sin prefijo
-		scheme = "tcp"
-		address = endpoint
+		protocol = "tcp"
+		address = target
 	}
 
-	return scheme, address
+	return protocol, address
 }
 
-func serve(connection *websocket.Conn, proxyPass string) {
+func handleWebSocketMessages(connection *websocket.Conn, proxyTarget string) {
 	defer func() {
 		recover()
 	}()
@@ -114,24 +116,24 @@ func serve(connection *websocket.Conn, proxyPass string) {
 		if err != nil {
 			break
 		}
-		content := struct {
+		messageContent := struct {
 			UUID string `json:"uuid"`
 		}{}
-		json.Unmarshal(message, &content)
+		json.Unmarshal(message, &messageContent)
 
-		protocol, proxyPass := parseEndpoint(proxyPass)
+		protocol, targetAddress := parseTargetEndpoint(proxyTarget)
 
-		if content.UUID != "" {
-			go connect(protocol, proxyPass, content.UUID)
+		if messageContent.UUID != "" {
+			go establishConnection(protocol, targetAddress, messageContent.UUID)
 		}
 	}
 }
 
-var badGatewayHeader = `HTTP/1.1 502 Bad Gateway
+var httpErrorHeader = `HTTP/1.1 502 Bad Gateway
 Content-Type: text/html
 Content-Length: `
 
-var badGatewayContent = `<!DOCTYPE html>
+var httpErrorContent = `<!DOCTYPE html>
 <html>
 <head>
     <title>502 Bad Gateway</title>
@@ -142,33 +144,158 @@ var badGatewayContent = `<!DOCTYPE html>
 </body>
 </html>`
 
-var badGatewayResponse = badGatewayHeader + fmt.Sprint(len(badGatewayContent)) + "\n\n" + badGatewayContent
+var httpErrorResponse = httpErrorHeader + fmt.Sprint(len(httpErrorContent)) + "\n\n" + httpErrorContent
 
-func connect(protocol, proxyPass, uuid string) {
-	url := serverUrl + "/" + uuid
+func establishConnection(protocol, proxyTarget, uuid string) {
+	websocketURL := baseServerURL + "/" + uuid
 
 	// Configuración para el cliente WebSocket
-	dialer := websocket.DefaultDialer
-	dialer.HandshakeTimeout = 5 * time.Second
+	websocketDialer := websocket.DefaultDialer
+	websocketDialer.HandshakeTimeout = 5 * time.Second
 
 	// Conectar al WebSocket
-	connection, _, err := dialer.Dial(url, nil)
+	connection, _, err := websocketDialer.Dial(websocketURL, nil)
 	if err != nil {
-		log.Printf("Error connecting to WebSocket server: %v\n", err)
+		log.Printf("Error al conectar al servidor WebSocket: %v\n", err)
 		return
 	}
-	defer connection.Close()
-
-	conn := helper.NewWebSocketIO(connection)
-	fmt.Println("Connected to server:", proxyPass)
-
-	err = helper.TcpBypass(conn, proxyPass, protocol)
-	if err != nil {
-		connection.WriteMessage(websocket.TextMessage, []byte(badGatewayResponse))
-		log.Printf("Error preparing TCP connection: %v\n", err)
+	defer func() {
+		closeMessage := websocket.FormatCloseMessage(websocket.CloseNormalClosure, "Cierre normal")
+		err = connection.WriteMessage(websocket.CloseMessage, closeMessage)
+		if err != nil {
+			log.Printf("Error al enviar mensaje de cierre: %v", err)
+		}
+		connection.Close()
+	}()
+	connection.SetReadLimit(1024 * 1024 * 32)
+	_, message, err := connection.ReadMessage()
+	if err != nil && err != io.EOF {
+		connection.WriteMessage(websocket.TextMessage, []byte(httpErrorResponse))
 		return
 	}
 
-	fmt.Println("Connection closed:", proxyPass)
+	isHTTP := helper.IsHTTPRequest(string(message))
 
+	if isHTTP {
+		handleHTTP(connection, proxyTarget, protocol, message)
+		return
+	}
+
+	if protocol == "http" || protocol == "https" {
+		connection.WriteMessage(websocket.TextMessage, []byte(httpErrorResponse))
+		return
+	}
+
+	handleTCP(connection, proxyTarget, protocol, message)
+}
+
+func handleTCP(connection *websocket.Conn, proxyTarget, protocol string, message []byte) {
+	var err error
+	var serverConnection net.Conn
+	if protocol == "tcp" {
+		serverConnection, err = net.Dial("tcp", proxyTarget)
+	} else {
+		serverConnection, err = tls.Dial("tcp", proxyTarget, &tls.Config{
+			InsecureSkipVerify: true,
+		})
+	}
+	if err != nil {
+		connection.WriteMessage(websocket.TextMessage, []byte(httpErrorResponse))
+		return
+	}
+	defer serverConnection.Close()
+
+	_, err = serverConnection.Write(message)
+	if err != nil {
+		connection.WriteMessage(websocket.TextMessage, []byte(httpErrorResponse))
+		return
+	}
+
+	go func() {
+		for {
+			buffer := make([]byte, 1024)
+			n, err := serverConnection.Read(buffer)
+			if err != nil {
+				break
+			}
+			err = connection.WriteMessage(websocket.BinaryMessage, buffer[:n])
+			if err != nil {
+				break
+			}
+		}
+	}()
+
+	for {
+		_, message, err := connection.ReadMessage()
+		if err != nil {
+			break
+		}
+		serverConnection.Write(message)
+	}
+}
+
+func handleHTTP(connection *websocket.Conn, proxyTarget, protocol string, message []byte) {
+	req, err := helper.ParseHTTPRequest(message, connection)
+	if err != nil {
+		connection.WriteMessage(websocket.TextMessage, []byte(httpErrorResponse))
+		return
+	}
+
+	host := strings.Split(proxyTarget, ":")[0]
+	if protocol != "http" && protocol != "https" {
+		protocol = "http"
+	}
+	serverURL := protocol + "://" + proxyTarget + req.URL.String()
+
+	requestToServer, err := http.NewRequest(req.Method, serverURL, req.Body)
+	if err != nil {
+		return
+	}
+	requestToServer.Header = req.Header
+	requestToServer.Host = host
+	requestToServer.Header.Add("Host", host)
+
+	var serverConnection net.Conn
+	if protocol == "http" {
+		serverConnection, err = net.Dial("tcp", proxyTarget)
+	} else {
+		serverConnection, err = tls.Dial("tcp", proxyTarget, &tls.Config{
+			InsecureSkipVerify: true,
+		})
+	}
+	if err != nil {
+		connection.WriteMessage(websocket.TextMessage, []byte(httpErrorResponse))
+		return
+	}
+	defer serverConnection.Close()
+
+	buf := helper.HTTPRequestToString(requestToServer)
+
+	_, err = serverConnection.Write([]byte(buf))
+	if err != nil {
+		connection.WriteMessage(websocket.TextMessage, []byte(httpErrorResponse))
+		return
+	}
+
+	go func() {
+		for {
+			buffer := make([]byte, 1024)
+			n, err := serverConnection.Read(buffer)
+			if err != nil {
+				break
+			}
+			err = connection.WriteMessage(websocket.BinaryMessage, buffer[:n])
+			if err != nil {
+				break
+			}
+		}
+	}()
+
+	for {
+		_, message, err := connection.ReadMessage()
+		if err != nil {
+			break
+		}
+		serverConnection.Write(message)
+	}
 }

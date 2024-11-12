@@ -48,7 +48,7 @@ type websocketConn struct {
 
 type Manager struct {
 	engine           *gin.Engine
-	domains          map[string]*Domain
+	hubs             map[string]*NetworkHub
 	remoteConn       chan *common.RemoteConn
 	registerDomain   chan *websocketConn
 	unregisterDomain chan string
@@ -63,7 +63,7 @@ func SetupManager(proxy *proxy.Proxy, addr string, cert string, key string) *Man
 	gin.SetMode(gin.ReleaseMode)
 
 	manager := &Manager{
-		domains:          make(map[string]*Domain),
+		hubs:             make(map[string]*NetworkHub),
 		remoteConn:       make(chan *common.RemoteConn),
 		registerDomain:   make(chan *websocketConn),
 		unregisterDomain: make(chan string),
@@ -107,27 +107,27 @@ func (manager *Manager) manage(done chan struct{}) {
 	for {
 		select {
 		case conn := <-manager.registerDomain:
-			if manager.domains[conn.Domain] == nil {
-				manager.domains[conn.Domain] = NewDomain(conn.Domain, manager.unregisterDomain)
-				go manager.domains[conn.Domain].listen()
+			if manager.hubs[conn.Domain] == nil {
+				manager.hubs[conn.Domain] = NewNetworkHub(conn.Domain, manager.unregisterDomain)
+				go manager.hubs[conn.Domain].listen()
 			}
-			manager.domains[conn.Domain].registerWebsocketConn <- conn
+			manager.hubs[conn.Domain].registerWebSocket <- conn
 			fmt.Println("Registered", conn.Domain)
 		case domain := <-manager.unregisterDomain:
-			if manager.domains[domain] != nil {
-				manager.domains[domain].done <- struct{}{}
-				delete(manager.domains, domain)
+			if manager.hubs[domain] != nil {
+				manager.hubs[domain].shutdownSignal <- struct{}{}
+				delete(manager.hubs, domain)
 			}
 			fmt.Println("Unregistered", domain)
 		case remoteConn := <-manager.remoteConn:
 			fmt.Println("Remote connection", remoteConn.Domain)
-			if manager.domains[remoteConn.Domain] == nil {
+			if manager.hubs[remoteConn.Domain] == nil {
 				fmt.Fprint(remoteConn, badGatewayResponse)
 				remoteConn.Close()
 				continue
 			}
-			domain := manager.domains[remoteConn.Domain]
-			domain.remoteConn <- remoteConn
+			domain := manager.hubs[remoteConn.Domain]
+			domain.incomingClientConn <- remoteConn
 		case <-done:
 			return
 		}

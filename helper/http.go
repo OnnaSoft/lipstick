@@ -1,11 +1,15 @@
 package helper
 
 import (
+	"bufio"
+	"bytes"
 	"crypto/tls"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"reflect"
+	"strings"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -15,47 +19,68 @@ type WebSocketIO struct {
 	conn *websocket.Conn
 }
 
+// NewWebSocketIO crea una nueva instancia de WebSocketIO.
 func NewWebSocketIO(conn *websocket.Conn) *WebSocketIO {
 	return &WebSocketIO{conn: conn}
 }
 
+// LocalAddr devuelve la dirección local de la conexión.
 func (w *WebSocketIO) LocalAddr() net.Addr {
 	return w.conn.LocalAddr()
 }
 
+// RemoteAddr devuelve la dirección remota de la conexión.
 func (w *WebSocketIO) RemoteAddr() net.Addr {
 	return w.conn.RemoteAddr()
 }
 
+// SetDeadline establece el tiempo de espera para lectura y escritura.
 func (w *WebSocketIO) SetDeadline(t time.Time) error {
-	return w.conn.SetReadDeadline(t)
+	if err := w.conn.SetReadDeadline(t); err != nil {
+		return err
+	}
+	return w.conn.SetWriteDeadline(t)
 }
 
+// SetReadDeadline establece el tiempo de espera para lectura.
 func (w *WebSocketIO) SetReadDeadline(t time.Time) error {
 	return w.conn.SetReadDeadline(t)
 }
 
+// SetWriteDeadline establece el tiempo de espera para escritura.
 func (w *WebSocketIO) SetWriteDeadline(t time.Time) error {
 	return w.conn.SetWriteDeadline(t)
 }
 
-func (w *WebSocketIO) Close() (err error) {
+// Close cierra la conexión WebSocket.
+func (w *WebSocketIO) Close() error {
 	return w.conn.Close()
 }
 
-func (w *WebSocketIO) Write(p []byte) (n int, err error) {
-	err = w.conn.WriteMessage(websocket.TextMessage, p)
+// Write escribe datos en la conexión WebSocket como un mensaje de texto.
+func (w *WebSocketIO) Write(p []byte) (int, error) {
+	err := w.conn.WriteMessage(websocket.BinaryMessage, p)
 	if err != nil {
 		return 0, err
 	}
 	return len(p), nil
 }
 
-func (r *WebSocketIO) Read(p []byte) (n int, err error) {
-	_, message, err := r.conn.ReadMessage()
+// Read lee datos de la conexión WebSocket.
+func (w *WebSocketIO) Read(p []byte) (int, error) {
+	messageType, message, err := w.conn.ReadMessage()
 	if err != nil {
 		return 0, err
 	}
+	if messageType != websocket.TextMessage {
+		return 0, websocket.ErrCloseSent // Puedes manejar otros tipos de mensajes si es necesario
+	}
+
+	// Verificar el tamaño del búfer antes de copiar
+	if len(message) > len(p) {
+		return 0, io.ErrShortBuffer
+	}
+
 	copy(p, message)
 	return len(message), nil
 }
@@ -97,4 +122,87 @@ func GetDomainName(conn net.Conn) (string, error) {
 	domain := state.ServerName
 
 	return domain, nil
+}
+
+func ReadAllMessages(connection *websocket.Conn) ([]byte, error) {
+	var buffer []byte
+
+	connection.SetWriteDeadline(time.Now().Add(10 * time.Second))
+
+	for {
+		messageType, message, err := connection.ReadMessage()
+		fmt.Println("Message type:", messageType, "Message:", string(message))
+		if err != nil {
+			return buffer, err
+		}
+		if messageType != websocket.TextMessage && messageType != websocket.BinaryMessage {
+			return buffer, io.EOF
+		}
+
+		// Verificar el tamaño del búfer antes de copiar
+		if len(message) > len(buffer) {
+			return buffer, io.ErrShortBuffer
+		}
+
+		copy(buffer, message)
+	}
+}
+
+func IsHTTPRequest(data string) bool {
+	// Dividir el string en líneas
+	lines := strings.Split(data, "\n")
+	if len(lines) == 0 {
+		return false
+	}
+
+	// Tomar la primera línea (request line)
+	requestLine := strings.TrimSpace(lines[0])
+
+	// Dividir la línea en partes
+	parts := strings.Split(requestLine, " ")
+	if len(parts) != 3 {
+		return false
+	}
+
+	// Validar el método HTTP
+	method := parts[0]
+	validMethods := map[string]bool{
+		"GET":     true,
+		"POST":    true,
+		"PUT":     true,
+		"DELETE":  true,
+		"PATCH":   true,
+		"OPTIONS": true,
+		"HEAD":    true,
+	}
+	if !validMethods[method] {
+		return false
+	}
+
+	// Validar que la versión comience con "HTTP/"
+	version := parts[2]
+	return strings.HasPrefix(version, "HTTP/")
+}
+
+func ParseHTTPRequest(data []byte, conn *websocket.Conn) (*http.Request, error) {
+	buff := bytes.NewBuffer(data)
+	for {
+		reader := bufio.NewReader(bytes.NewReader(buff.Bytes()))
+
+		// Intenta leer la solicitud HTTP
+		request, err := http.ReadRequest(reader)
+		if err != nil {
+			_, message, err := conn.ReadMessage()
+			if err != nil {
+				return nil, err
+			}
+			if len(message) > 0 {
+				buff.Write(message)
+			}
+			continue
+		}
+
+		// Si no hay error, es un request HTTP válido
+		return request, nil
+	}
 }
