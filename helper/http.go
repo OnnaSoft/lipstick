@@ -2,7 +2,6 @@ package helper
 
 import (
 	"bufio"
-	"bytes"
 	"crypto/tls"
 	"fmt"
 	"io"
@@ -185,24 +184,13 @@ func IsHTTPRequest(data string) bool {
 }
 
 func ParseHTTPRequest(data []byte, conn *websocket.Conn) (*http.Request, error) {
-	buff := bytes.NewBuffer(data)
-	for {
-		reader := bufio.NewReader(bytes.NewReader(buff.Bytes()))
+	ws := NewWebSocketIO(conn)
+	reader := io.Reader(ws)
 
-		// Intenta leer la solicitud HTTP
-		request, err := http.ReadRequest(reader)
-		if err != nil {
-			_, message, err := conn.ReadMessage()
-			if err != nil {
-				return nil, err
-			}
-			if len(message) > 0 {
-				buff.Write(message)
-			}
-			continue
-		}
-
-		// Si no hay error, es un request HTTP válido
-		return request, nil
+	request, err := http.ReadRequest(bufio.NewReader(reader))
+	if err != nil {
+		return nil, err
 	}
+
+	return request, nil
 }
