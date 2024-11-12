@@ -161,7 +161,6 @@ func (hub *NetworkHub) checkConnection(conn *websocketConn) {
 	defer conn.Close()
 	for {
 		if _, _, err := conn.ReadMessage(); err != nil {
-			fmt.Printf("Error leyendo mensaje: %v\n", err)
 			hub.unregisterWebSocket <- conn
 			break
 		}

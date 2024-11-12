@@ -120,7 +120,6 @@ func (manager *Manager) manage(done chan struct{}) {
 			}
 			fmt.Println("Unregistered", domain)
 		case remoteConn := <-manager.remoteConn:
-			fmt.Println("Remote connection", remoteConn.Domain)
 			if manager.hubs[remoteConn.Domain] == nil {
 				fmt.Fprint(remoteConn, badGatewayResponse)
 				remoteConn.Close()
