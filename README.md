@@ -112,3 +112,37 @@ To ensure secure communication between the client and server, a secret key (`-k`
 - Lipstick is in an **experimental** phase and may not yet support all production scenarios.
 - For enhanced security, it is recommended to integrate Lipstick with a reverse proxy like **Nginx** or **Traefik**.
 - Ensure that the ports used by Lipstick are properly secured and monitored to prevent unauthorized access.
+
+
+---
+
+## Example Configuration File
+
+Here is an example of a configuration file (`config.yml`) for Lipstick:
+
+```yaml
+admin_secret_key: "super_secret_key"
+proxy:
+  address: ":5050"
+manager:
+  address: ":5051"
+admin:
+  address: ":5052"
+tls:
+  certificate_path: "/path/to/cert.pem"
+  key_path: "/path/to/key.pem"
+database:
+  host: "db.example.com"
+  port: 5432
+  user: "dbuser"
+  password: "dbpassword"
+  database: "app_db"
+  ssl_mode: "disable"
+redis:
+  host: "localhost"
+  port: 6379
+  password: "redispassword"
+  database: 1
+```
+
+This configuration file specifies the secret key, proxy, manager, and admin addresses, TLS certificate paths, database credentials, and Redis configuration.
