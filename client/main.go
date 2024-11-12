@@ -161,10 +161,7 @@ func establishConnection(protocol, proxyTarget, uuid string) {
 	}
 	defer func() {
 		closeMessage := websocket.FormatCloseMessage(websocket.CloseNormalClosure, "Cierre normal")
-		err = connection.WriteMessage(websocket.CloseMessage, closeMessage)
-		if err != nil {
-			log.Printf("Error al enviar mensaje de cierre: %v", err)
-		}
+		connection.WriteMessage(websocket.CloseMessage, closeMessage)
 		connection.Close()
 	}()
 	connection.SetReadLimit(1024 * 1024 * 32)

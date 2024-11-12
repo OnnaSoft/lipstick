@@ -16,11 +16,16 @@ import (
 
 type WebSocketIO struct {
 	conn *websocket.Conn
+	buff []byte
 }
 
 // NewWebSocketIO crea una nueva instancia de WebSocketIO.
 func NewWebSocketIO(conn *websocket.Conn) *WebSocketIO {
 	return &WebSocketIO{conn: conn}
+}
+
+func (w *WebSocketIO) SetBuffer(buff []byte) {
+	w.buff = buff
 }
 
 // LocalAddr devuelve la dirección local de la conexión.
@@ -67,6 +72,12 @@ func (w *WebSocketIO) Write(p []byte) (int, error) {
 
 // Read lee datos de la conexión WebSocket.
 func (w *WebSocketIO) Read(p []byte) (int, error) {
+	if len(w.buff) > 0 {
+		n := copy(p, w.buff)
+		w.buff = w.buff[n:]
+		return n, nil
+	}
+
 	messageType, message, err := w.conn.ReadMessage()
 	if err != nil {
 		return 0, err
@@ -161,6 +172,7 @@ func IsHTTPRequest(data string) bool {
 
 func ParseHTTPRequest(data []byte, conn *websocket.Conn) (*http.Request, error) {
 	ws := NewWebSocketIO(conn)
+	ws.SetBuffer(data)
 	reader := io.Reader(ws)
 
 	request, err := http.ReadRequest(bufio.NewReader(reader))
