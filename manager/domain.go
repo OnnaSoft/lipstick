@@ -45,20 +45,33 @@ func NewDomain(name string, unregister chan string) *Domain {
 	}
 }
 
-func (domain *Domain) sync(dst, src net.Conn) {
-	defer dst.Close()
-	defer src.Close()
+func (domain *Domain) sync(pipe, dest net.Conn) {
+	// Usamos sync.Once para garantizar que las conexiones se cierren solo una vez.
+	closeConnections := func() {
+		fmt.Println("Cerrando conexión")
+		dest.Close()
+		pipe.Close()
+	}
 
+	// Garantizamos que las conexiones se cierren al salir de la función principal.
+	defer closeConnections()
+
+	// Goroutine para copiar datos de `pipe` a `dest`.
 	go func() {
-		defer dst.Close()
-		defer src.Close()
+		defer func() {
+			fmt.Println("Cerrando conexión desde la goroutine de escritura")
+			closeConnections()
+		}()
 
-		written, _ := helper.Copy(dst, src)
+		written, err := helper.Copy(dest, pipe)
 		domain.consumption <- written
+		fmt.Printf("Escritura completada: bytes=%d, error=%v\n", written, err)
 	}()
 
-	written, _ := helper.Copy(src, dst)
+	// Copiar datos de `dest` a `pipe`.
+	written, err := helper.Copy(pipe, dest)
 	domain.consumption <- written
+	fmt.Printf("Lectura completada: bytes=%d, error=%v\n", written, err)
 }
 
 func (domain *Domain) listen() {
@@ -84,6 +97,10 @@ func (domain *Domain) listen() {
 				delete(connections, conn.Conn)
 			}
 		case request := <-domain.request:
+			request.conn.SetCloseHandler(func(code int, text string) error {
+				fmt.Printf("Conexión cerrada por el servidor: Código=%d, Razón=%s\n", code, text)
+				return nil
+			})
 			dest := helper.NewWebSocketIO(request.conn)
 			pipe := domain.remoteConnections[request.uuid]
 			delete(domain.remoteConnections, request.uuid)

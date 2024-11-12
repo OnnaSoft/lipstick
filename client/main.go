@@ -4,9 +4,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
-	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -18,7 +16,6 @@ import (
 	"github.com/juliotorresmoreno/lipstick/helper"
 )
 
-var done = make(chan struct{})
 var conf, _ = config.GetConfig()
 var serverUrl = conf.ServerUrl
 
@@ -57,8 +54,7 @@ func main() {
 				fmt.Println("Cliente WebSocket iniciado. Presiona Ctrl+C para salir.")
 
 				go ping(connection)
-				readRump(connection, proxyPass)
-				done = make(chan struct{})
+				serve(connection, proxyPass)
 				time.Sleep(sleep)
 				connection.Close()
 			}
@@ -70,6 +66,9 @@ func main() {
 }
 
 func ping(connection *websocket.Conn) {
+	defer func() {
+		recover()
+	}()
 	for {
 		time.Sleep(30 * time.Second)
 		err := connection.WriteMessage(websocket.PingMessage, nil)
@@ -105,16 +104,15 @@ func parseEndpoint(endpoint string) (string, string) {
 	return scheme, address
 }
 
-func readRump(connection *websocket.Conn, proxyPass string) {
-	defer close(done)
+func serve(connection *websocket.Conn, proxyPass string) {
 	defer func() {
 		recover()
 	}()
 
 	for {
 		_, message, err := connection.ReadMessage()
-		if err == io.EOF {
-			continue
+		if err != nil {
+			break
 		}
 		content := struct {
 			UUID string `json:"uuid"`
@@ -164,43 +162,13 @@ func connect(protocol, proxyPass, uuid string) {
 	conn := helper.NewWebSocketIO(connection)
 	fmt.Println("Connected to server:", proxyPass)
 
-	// Conectar al servidor remoto usando HTTPS, TLS o TCP según el protocolo
-	var remote net.Conn
-	switch protocol {
-	case "tls", "https":
-		// Configuración TLS para la conexión remota
-		tlsConfig := &tls.Config{
-			InsecureSkipVerify: true, // Usar solo en pruebas; desactiva en producción para verificar el certificado del servidor
-		}
-		remote, err = tls.Dial("tcp", proxyPass, tlsConfig)
-	default:
-		remote, err = net.Dial("tcp", proxyPass)
-	}
-
+	err = helper.TcpBypass(conn, proxyPass, protocol)
 	if err != nil {
-		log.Println("Remote host is not available:", err)
-		fmt.Fprint(conn, badGatewayResponse)
-		return
-	}
-	defer remote.Close()
-	fmt.Println("Connected to remote host:", proxyPass)
-
-	if protocol == "http" || protocol == "https" {
-		err = helper.HTTPBypass(conn, remote, proxyPass, protocol)
-		if err != nil {
-			log.Printf("Error preparing HTTP connection: %v\n", err)
-			return
-		}
+		connection.WriteMessage(websocket.TextMessage, []byte(badGatewayResponse))
+		log.Printf("Error preparing TCP connection: %v\n", err)
 		return
 	}
 
-	// Copiar tráfico validando que la solicitud HTTP tenga el host correcto
-	go func() {
-		_, err := io.Copy(remote, conn)
-		if err != nil {
-			log.Printf("Error during host validation or data transfer: %v\n", err)
-			return
-		}
-	}()
-	io.Copy(conn, remote)
+	fmt.Println("Connection closed:", proxyPass)
+
 }
