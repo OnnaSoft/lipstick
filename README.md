@@ -55,64 +55,48 @@ Usage of lipstick-client:
 
 ---
 
-## Running Lipstick in Docker
+## Environment Variables
 
-### Run Client in Docker
+Lipstick supports environment variables for configuration. These variables can be used as an alternative to the configuration file or command-line arguments:
 
-You can run the Lipstick client in a Docker container to expose a local service securely:
+### General Configuration
 
-#### Without SSL:
+| Variable          | Description                                         | Default         |
+|--------------------|-----------------------------------------------------|-----------------|
+| `ADMIN_ADDR`       | Address for the admin API                          | `:5052`         |
+| `MANAGER_ADDR`     | Address for WebSocket manager connections          | `:5051`         |
+| `PROXY_ADDR`       | Address for the proxy                              | `:5050`         |
+| `ADMIN_SECRET_KEY` | Secret key for admin API authorization             | `""`            |
 
-```bash
-docker run --entrypoint lipstick --name lipstick --network host   --restart always -dt jliotorresmoreno/lipstick   -s ws://127.0.0.1:5051/ws   -p 127.0.0.1:8082   -k 123456
-```
+### TLS Configuration
 
-#### With SSL:
+| Variable         | Description                  | Default       |
+|-------------------|------------------------------|---------------|
+| `TLS_CERT`        | Path to the TLS certificate | `""`          |
+| `TLS_KEY`         | Path to the TLS key         | `""`          |
 
-```bash
-docker run --entrypoint lipstick --name lipstick --network host   --restart always -dt jliotorresmoreno/lipstick   -s wss://example.com/ws   -p 127.0.0.1:8082   -k 123456
-```
+### Redis Configuration
 
-### Run Server in Docker
+| Variable            | Description                                         | Default   |
+|----------------------|-----------------------------------------------------|-----------|
+| `REDIS_HOST`         | Redis host address                                 | `localhost` |
+| `REDIS_PORT`         | Redis port                                         | `6379`    |
+| `REDIS_PASSWORD`     | Redis password (leave empty if not set)            | `""`      |
+| `REDIS_DB`           | Redis database index                               | `0`       |
+| `REDIS_POOL_SIZE`    | Maximum number of connections in the Redis pool    | `10`      |
+| `REDIS_MIN_IDLE_CONNS` | Minimum number of idle connections in the pool    | `3`       |
+| `REDIS_POOL_TIMEOUT` | Timeout (in seconds) for getting a connection      | `30`      |
 
-To run the Lipstick server in a Docker container:
+### Database Configuration
 
-#### Without SSL:
-
-```bash
-docker run --name lipstickd --network host --restart always -d   jliotorresmoreno/lipstick   -p 8080   -m 8081   -k 123456
-```
-
-#### With SSL:
-
-```bash
-docker run --entrypoint lipstickd --name lipstickd --network host   -v /etc/letsencrypt:/etc/letsencrypt   --restart always -d jliotorresmoreno/lipstick   -p 8080   -m 8081   -k 123456   -cert /etc/letsencrypt/live/example.com/fullchain.pem   -key /etc/letsencrypt/live/example.com/privkey.pem
-```
-
----
-
-## Authentication
-
-To ensure secure communication between the client and server, a secret key (`-k`) must be provided. This key is used to authenticate the client with the server. Make sure to use a strong, unique key and store it securely.
-
----
-
-## Examples of Use Cases
-
-1. **Expose a Development Server:** Use the Lipstick client to expose a local development server to a remote team for testing without deploying the application to production.
-
-2. **Securely Share a Local Database:** Run a local database on your machine and use Lipstick to allow remote access for collaborators or applications.
-
-3. **Forward Webhooks to Your Local Machine:** Use Lipstick to expose your local service for receiving webhooks from third-party services, even if you’re behind a NAT or firewall.
-
----
-
-## Notes
-
-- Lipstick is in an **experimental** phase and may not yet support all production scenarios.
-- For enhanced security, it is recommended to integrate Lipstick with a reverse proxy like **Nginx** or **Traefik**.
-- Ensure that the ports used by Lipstick are properly secured and monitored to prevent unauthorized access.
-
+| Variable        | Description                    | Default      |
+|------------------|--------------------------------|--------------|
+| `DB_HOST`        | Database host address         | `localhost`  |
+| `DB_PORT`        | Database port                 | `5432`       |
+| `DB_USER`        | Database user                 | `postgres`   |
+| `DB_PASSWORD`    | Database password             | `""`         |
+| `DB_NAME`        | Database name                 | `app_db`     |
+| `DB_SSL_MODE`    | Database SSL mode             | `disable`    |
 
 ---
 
@@ -143,6 +127,15 @@ redis:
   port: 6379
   password: "redispassword"
   database: 1
+  pool_size: 20
+  min_idle_conns: 5
+  pool_timeout: 30
 ```
 
-This configuration file specifies the secret key, proxy, manager, and admin addresses, TLS certificate paths, database credentials, and Redis configuration.
+---
+
+## Notes
+
+- Lipstick is in an **experimental** phase and may not yet support all production scenarios.
+- For enhanced security, it is recommended to integrate Lipstick with a reverse proxy like **Nginx** or **Traefik**.
+- Ensure that the ports used by Lipstick are properly secured and monitored to prevent unauthorized access.
