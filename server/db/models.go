@@ -17,8 +17,3 @@ type DailyConsumption struct {
 	CreatedAt time.Time // Automatically managed by GORM
 	UpdatedAt time.Time // Automatically managed by GORM
 }
-
-// Relationship in Domain model
-func (d *Domain) DailyConsumptions() []DailyConsumption {
-	return []DailyConsumption{}
-}

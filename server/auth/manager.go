@@ -1,10 +1,5 @@
 package auth
 
-type User struct {
-	ID       uint   `json:"id"`
-	Username string `json:"username"`
-}
-
 type Domain struct {
 	ID                       uint   `json:"id"`
 	Name                     string `json:"name"`
