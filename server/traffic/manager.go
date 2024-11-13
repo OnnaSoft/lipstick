@@ -33,6 +33,8 @@ func NewTrafficManager(threshold int64) *TrafficManager {
 
 // AddTraffic adds traffic data for a specific domain
 func (tm *TrafficManager) AddTraffic(domain string, bytes int64) {
+	//fmt.Println("AddTraffic", domain, bytes)
+	//fmt.Println(TrafficEvent{Domain: domain, Bytes: bytes})
 	tm.dbChan <- TrafficEvent{Domain: domain, Bytes: bytes}
 }
 
@@ -81,8 +83,6 @@ func (tm *TrafficManager) updateDatabase(domain string) {
 		log.Printf("Error updating DailyConsumption: %v", err)
 		return
 	}
-
-	log.Printf("Updated database: Domain=%s, BytesUsed=%d", domain, traffic)
 }
 
 // Close stops the TrafficManager by closing the channel

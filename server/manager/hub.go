@@ -4,11 +4,13 @@ import (
 	"fmt"
 	"math/rand"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/juliotorresmoreno/lipstick/server/common"
+	"github.com/juliotorresmoreno/lipstick/server/traffic"
 )
 
 type NetworkHub struct {
@@ -19,13 +21,16 @@ type NetworkHub struct {
 	unregisterWebSocket  chan *websocketConn
 	incomingClientConn   chan *common.RemoteConn
 	serverRequests       chan *request
+	trafficManager       *traffic.TrafficManager
 	clientUnregister     chan string
-	dataUsage            chan int64
+	dataUsageAccumulator int64      // Local traffic accumulator
+	threshold            int64      // Threshold for reporting traffic
+	mu                   sync.Mutex // Mutex to protect dataUsageAccumulator
 	totalDataTransferred int64
 	shutdownSignal       chan struct{}
 }
 
-func NewNetworkHub(name string, unregister chan string) *NetworkHub {
+func NewNetworkHub(name string, unregister chan string, trafficManager *traffic.TrafficManager, threshold int64) *NetworkHub {
 	return &NetworkHub{
 		HubName: name,
 		// Mapa de conexiones de clientes
@@ -37,9 +42,10 @@ func NewNetworkHub(name string, unregister chan string) *NetworkHub {
 		incomingClientConn:   make(chan *common.RemoteConn),
 		// Canal de peticiones al servidor
 		serverRequests:       make(chan *request),
+		trafficManager:       trafficManager,
 		clientUnregister:     unregister,
-		dataUsage:            make(chan int64),
-		totalDataTransferred: 0,
+		dataUsageAccumulator: 0,
+		threshold:            threshold,
 		shutdownSignal:       make(chan struct{}),
 	}
 }
@@ -47,6 +53,7 @@ func NewNetworkHub(name string, unregister chan string) *NetworkHub {
 func (hub *NetworkHub) syncConnections(pipe net.Conn, destination *websocket.Conn) {
 	defer pipe.Close()
 	defer destination.Close()
+
 	go func() {
 		defer pipe.Close()
 		defer destination.Close()
@@ -65,7 +72,7 @@ func (hub *NetworkHub) syncConnections(pipe net.Conn, destination *websocket.Con
 				if writeErr != nil {
 					return
 				}
-				hub.dataUsage <- int64(len(message))
+				hub.addDataUsage(int64(len(message)))
 			} else if messageType == websocket.CloseMessage {
 				return
 			}
@@ -84,7 +91,20 @@ func (hub *NetworkHub) syncConnections(pipe net.Conn, destination *websocket.Con
 		if err != nil {
 			return
 		}
-		hub.dataUsage <- int64(n)
+		hub.addDataUsage(int64(n))
+	}
+}
+
+func (hub *NetworkHub) addDataUsage(bytes int64) {
+	hub.mu.Lock()
+	defer hub.mu.Unlock()
+
+	hub.dataUsageAccumulator += bytes
+	hub.totalDataTransferred += bytes
+
+	if hub.dataUsageAccumulator >= hub.threshold {
+		hub.trafficManager.AddTraffic(hub.HubName, hub.dataUsageAccumulator)
+		hub.dataUsageAccumulator = 0 // Reset after sending
 	}
 }
 
@@ -143,11 +163,8 @@ func (hub *NetworkHub) listen() {
 			rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
 			conn := conns[rnd.Intn(len(conns))]
 			conn.WriteJSON(map[string]string{"uuid": ticket})
-		case data := <-hub.dataUsage:
-			hub.totalDataTransferred += data
 		case <-hub.shutdownSignal:
 			close(hub.registerWebSocket)
-			close(hub.dataUsage)
 			close(hub.incomingClientConn)
 			close(hub.serverRequests)
 			close(hub.shutdownSignal)

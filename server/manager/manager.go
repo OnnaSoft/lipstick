@@ -10,6 +10,7 @@ import (
 	"github.com/juliotorresmoreno/lipstick/server/auth"
 	"github.com/juliotorresmoreno/lipstick/server/common"
 	"github.com/juliotorresmoreno/lipstick/server/proxy"
+	"github.com/juliotorresmoreno/lipstick/server/traffic"
 )
 
 var upgrader = websocket.Upgrader{
@@ -53,6 +54,7 @@ type Manager struct {
 	registerDomain   chan *websocketConn
 	unregisterDomain chan string
 	proxy            *proxy.Proxy
+	trafficManager   *traffic.TrafficManager
 	authManager      auth.AuthManager
 	addr             string
 	cert             string
@@ -69,6 +71,7 @@ func SetupManager(proxy *proxy.Proxy, addr string, cert string, key string) *Man
 		unregisterDomain: make(chan string),
 		proxy:            proxy,
 		authManager:      auth.MakeAuthManager(),
+		trafficManager:   traffic.NewTrafficManager(64 * 1024),
 		addr:             addr,
 		cert:             cert,
 		key:              key,
@@ -108,7 +111,12 @@ func (manager *Manager) manage(done chan struct{}) {
 		select {
 		case conn := <-manager.registerDomain:
 			if manager.hubs[conn.Domain] == nil {
-				manager.hubs[conn.Domain] = NewNetworkHub(conn.Domain, manager.unregisterDomain)
+				manager.hubs[conn.Domain] = NewNetworkHub(
+					conn.Domain,
+					manager.unregisterDomain,
+					manager.trafficManager,
+					64*1024,
+				)
 				go manager.hubs[conn.Domain].listen()
 			}
 			manager.hubs[conn.Domain].registerWebSocket <- conn
