@@ -16,6 +16,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/juliotorresmoreno/lipstick/client/config"
+	"github.com/juliotorresmoreno/lipstick/client/manager"
 	"github.com/juliotorresmoreno/lipstick/helper"
 )
 
@@ -30,8 +31,11 @@ var client = &http.Client{
 		TLSClientConfig:     &tls.Config{InsecureSkipVerify: true},
 	},
 }
+var wsmanager = manager.NewWebSocketManager(5 * time.Second)
 
 func main() {
+	defer wsmanager.CloseAllConnections()
+
 	interruptChannel := make(chan os.Signal, 1)
 	signal.Notify(interruptChannel, os.Interrupt)
 
@@ -156,12 +160,7 @@ var httpErrorResponse = httpErrorHeader + fmt.Sprint(len(httpErrorContent)) + "\
 func establishConnection(protocol, proxyTarget, uuid string) {
 	websocketURL := baseServerURL + "/" + uuid
 
-	// Configuración para el cliente WebSocket
-	websocketDialer := websocket.DefaultDialer
-	websocketDialer.HandshakeTimeout = 5 * time.Second
-
-	// Conectar al WebSocket
-	connection, _, err := websocketDialer.Dial(websocketURL, nil)
+	connection, err := wsmanager.Connect(websocketURL)
 	if err != nil {
 		log.Printf("Error al conectar al servidor WebSocket: %v\n", err)
 		return
