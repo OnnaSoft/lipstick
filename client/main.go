@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"slices"
 	"strings"
 	"time"
 
@@ -307,8 +308,11 @@ func handleHTTP(connection *websocket.Conn, proxyTarget, protocol string, messag
 	requestToServer.Header.Add("Host", host)
 
 	// Check if the request is an Upgrade (WebSocket) request
-	isWebSocket := strings.ToLower(req.Header.Get("Connection")) == "upgrade" &&
-		strings.ToLower(req.Header.Get("Upgrade")) == "websocket"
+	hconn := strings.ToLower(req.Header.Get("Connection"))
+	hupgrade := strings.ToLower(req.Header.Get("Upgrade"))
+	validUpgrade := []string{"websocket"}
+
+	isWebSocket := strings.Contains(hconn, "upgrade") && slices.Contains(validUpgrade, hupgrade)
 
 	if !isWebSocket {
 		handleHTTPRequest(connection, serverURL, requestToServer, host)
@@ -320,6 +324,8 @@ func handleHTTP(connection *websocket.Conn, proxyTarget, protocol string, messag
 func handleWebSocket(connection *websocket.Conn, proxyTarget, protocol string, requestToServer *http.Request) {
 	var serverConnection net.Conn
 	var err error
+
+	fmt.Println("Estableciendo conexión WebSocket")
 
 	// Establish connection to the WebSocket server
 	if protocol == "http" {
