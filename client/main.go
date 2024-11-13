@@ -168,7 +168,7 @@ func establishConnection(protocol, proxyTarget, uuid string) {
 	connection.SetReadLimit(1024 * 1024 * 32)
 	_, message, err := connection.ReadMessage()
 	if err != nil && err != io.EOF {
-		connection.WriteMessage(websocket.TextMessage, []byte(httpErrorResponse))
+		sendErrorResponse(connection)
 		return
 	}
 
@@ -180,7 +180,7 @@ func establishConnection(protocol, proxyTarget, uuid string) {
 	}
 
 	if protocol == "http" || protocol == "https" {
-		connection.WriteMessage(websocket.TextMessage, []byte(httpErrorResponse))
+		sendErrorResponse(connection)
 		return
 	}
 
@@ -198,14 +198,14 @@ func handleTCP(connection *websocket.Conn, proxyTarget, protocol string, message
 		})
 	}
 	if err != nil {
-		connection.WriteMessage(websocket.TextMessage, []byte(httpErrorResponse))
+		sendErrorResponse(connection)
 		return
 	}
 	defer serverConnection.Close()
 
 	_, err = serverConnection.Write(message)
 	if err != nil {
-		connection.WriteMessage(websocket.TextMessage, []byte(httpErrorResponse))
+		sendErrorResponse(connection)
 		return
 	}
 
