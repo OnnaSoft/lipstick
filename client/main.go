@@ -8,6 +8,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"strings"
@@ -231,10 +232,63 @@ func handleTCP(connection *websocket.Conn, proxyTarget, protocol string, message
 	}
 }
 
+// sendHTTPResponse sends an HTTP response back over the WebSocket connection.
+func sendHTTPResponse(connection *websocket.Conn, resp *http.Response) error {
+	headers := ""
+	for key, values := range resp.Header {
+		for _, value := range values {
+			headers += fmt.Sprintf("%s: %s\r\n", key, value)
+		}
+	}
+	responseHeader := fmt.Sprintf("HTTP/1.1 %d %s\r\n%s\r\n", resp.StatusCode, resp.Status, headers)
+	if err := connection.WriteMessage(websocket.TextMessage, []byte(responseHeader)); err != nil {
+		return err
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+	return connection.WriteMessage(websocket.TextMessage, body)
+}
+
+func sendErrorResponse(connection *websocket.Conn) {
+	connection.WriteMessage(websocket.TextMessage, []byte(httpErrorResponse))
+}
+
+// handleHTTPRequest forwards HTTP requests using Go's http.Client.
+func handleHTTPRequest(connection *websocket.Conn, serverURL string, req *http.Request, host string) {
+	// Create an HTTP client
+	client := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		},
+	}
+
+	// Prepare the request for the target server
+	req.URL, _ = url.Parse(serverURL)
+	req.RequestURI = "" // Clear RequestURI since http.Client uses URL instead
+	req.Host = host
+
+	// Forward the request to the target server
+	resp, err := client.Do(req)
+	if err != nil {
+		sendErrorResponse(connection)
+		return
+	}
+	defer resp.Body.Close()
+
+	// Send the response back to the WebSocket client
+	err = sendHTTPResponse(connection, resp)
+	if err != nil {
+		fmt.Println("Error sending HTTP response:", err)
+	}
+}
+
 func handleHTTP(connection *websocket.Conn, proxyTarget, protocol string, message []byte) {
 	req, err := helper.ParseHTTPRequest(message, connection)
 	if err != nil {
-		connection.WriteMessage(websocket.TextMessage, []byte(httpErrorResponse))
+		sendErrorResponse(connection)
 		return
 	}
 
@@ -252,7 +306,22 @@ func handleHTTP(connection *websocket.Conn, proxyTarget, protocol string, messag
 	requestToServer.Host = host
 	requestToServer.Header.Add("Host", host)
 
+	// Check if the request is an Upgrade (WebSocket) request
+	isWebSocket := strings.ToLower(req.Header.Get("Connection")) == "upgrade" &&
+		strings.ToLower(req.Header.Get("Upgrade")) == "websocket"
+
+	if !isWebSocket {
+		handleHTTPRequest(connection, serverURL, requestToServer, host)
+		return
+	}
+	handleWebSocket(connection, proxyTarget, protocol, requestToServer)
+}
+
+func handleWebSocket(connection *websocket.Conn, proxyTarget, protocol string, requestToServer *http.Request) {
 	var serverConnection net.Conn
+	var err error
+
+	// Establish connection to the WebSocket server
 	if protocol == "http" {
 		serverConnection, err = net.Dial("tcp", proxyTarget)
 	} else {
@@ -261,19 +330,20 @@ func handleHTTP(connection *websocket.Conn, proxyTarget, protocol string, messag
 		})
 	}
 	if err != nil {
-		connection.WriteMessage(websocket.TextMessage, []byte(httpErrorResponse))
+		sendErrorResponse(connection)
 		return
 	}
 	defer serverConnection.Close()
 
+	// Convert HTTP request to string and send it
 	buf := helper.HTTPRequestToString(requestToServer)
-
 	_, err = serverConnection.Write([]byte(buf))
 	if err != nil {
-		connection.WriteMessage(websocket.TextMessage, []byte(httpErrorResponse))
+		sendErrorResponse(connection)
 		return
 	}
 
+	// Proxy data from server to WebSocket client
 	go func() {
 		for {
 			buffer := make([]byte, 1024)
@@ -288,6 +358,7 @@ func handleHTTP(connection *websocket.Conn, proxyTarget, protocol string, messag
 		}
 	}()
 
+	// Proxy data from WebSocket client to server
 	for {
 		_, message, err := connection.ReadMessage()
 		if err != nil {
@@ -295,4 +366,6 @@ func handleHTTP(connection *websocket.Conn, proxyTarget, protocol string, messag
 		}
 		serverConnection.Write(message)
 	}
+
+	fmt.Println("Fin de la conexión WebSocket")
 }

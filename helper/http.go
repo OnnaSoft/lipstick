@@ -2,6 +2,7 @@ package helper
 
 import (
 	"bufio"
+	"bytes"
 	"crypto/tls"
 	"fmt"
 	"io"
@@ -170,14 +171,44 @@ func IsHTTPRequest(data string) bool {
 	return strings.HasPrefix(version, "HTTP/")
 }
 
-func ParseHTTPRequest(data []byte, conn *websocket.Conn) (*http.Request, error) {
-	ws := NewWebSocketIO(conn)
-	ws.SetBuffer(data)
-	reader := io.Reader(ws)
+func ReadHTTPRequestFromWebSocket(conn *websocket.Conn, data []byte) ([]byte, error) {
+	// Inicializar el buffer con los datos iniciales
+	buffer := bytes.NewBuffer(data)
 
-	request, err := http.ReadRequest(bufio.NewReader(reader))
+	// Continuar leyendo del WebSocket hasta completar el cuerpo del request
+	for {
+		// Verificar si ya tenemos el final del encabezado HTTP (\r\n\r\n)
+		if bytes.Contains(buffer.Bytes(), []byte{13, 10, 13, 10}) {
+			break
+		}
+
+		// Leer más datos desde el WebSocket
+		_, message, err := conn.ReadMessage()
+		if err != nil {
+			return nil, fmt.Errorf("error reading WebSocket message: %w", err)
+		}
+
+		// Escribir los datos leídos en el buffer
+		buffer.Write(message)
+	}
+
+	return buffer.Bytes(), nil
+}
+
+func ParseHTTPRequest(data []byte, conn *websocket.Conn) (*http.Request, error) {
+	// Leer todo el cuerpo HTTP desde el WebSocket
+	completeData, err := ReadHTTPRequestFromWebSocket(conn, data)
 	if err != nil {
 		return nil, err
+	}
+
+	// Crear un reader para los datos acumulados
+	reader := bufio.NewReader(bytes.NewReader(completeData))
+
+	// Parsear la solicitud HTTP
+	request, err := http.ReadRequest(reader)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing HTTP request: %w", err)
 	}
 
 	return request, nil
