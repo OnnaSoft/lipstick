@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"strconv"
 
 	"github.com/juliotorresmoreno/lipstick/helper"
 	"gopkg.in/yaml.v3"
@@ -38,10 +39,13 @@ type DatabaseConfig struct {
 }
 
 type RedisConfig struct {
-	Host     string `yaml:"host"`
-	Port     int    `yaml:"port"`
-	Password string `yaml:"password"`
-	Database int    `yaml:"database"`
+	Host         string `yaml:"host"`
+	Port         int    `yaml:"port"`
+	Password     string `yaml:"password"`
+	Database     int    `yaml:"database"`
+	PoolSize     int    `yaml:"pool_size"`
+	MinIdleConns int    `yaml:"min_idle_conns"`
+	PoolTimeout  int    `yaml:"pool_timeout"`
 }
 
 type AppConfig struct {
@@ -58,16 +62,11 @@ var appConfig AppConfig
 
 func loadConfig() {
 	var configPath string
-	var adminAddress string
-	var managerAddress string
-	var proxyAddress string
-	var adminSecretKey string
-	var tlsCert string
-	var tlsKey string
-	var redisHost string
-	var redisPort int
-	var redisPassword string
-	var redisDatabase int
+	var adminAddress, managerAddress, proxyAddress, adminSecretKey, tlsCert, tlsKey string
+	var redisHost, redisPassword string
+	var redisPort, redisDatabase, redisPoolSize, redisMinIdleConns, redisPoolTimeout int
+	var dbHost, dbUser, dbPassword, dbName, dbSSLMode string
+	var dbPort int
 
 	// Default configuration
 	defaultConfig := AppConfig{
@@ -81,9 +80,20 @@ func loadConfig() {
 			Address: ":5050",
 		},
 		Redis: RedisConfig{
+			Host:         "localhost",
+			Port:         6379,
+			Database:     0,
+			PoolSize:     10,
+			MinIdleConns: 3,
+			PoolTimeout:  30,
+		},
+		Database: DatabaseConfig{
 			Host:     "localhost",
-			Port:     6379,
-			Database: 0,
+			Port:     5432,
+			User:     "postgres",
+			Password: "",
+			Database: "app_db",
+			SSLMode:  "disable",
 		},
 	}
 
@@ -99,6 +109,15 @@ func loadConfig() {
 	flag.IntVar(&redisPort, "redis-port", 0, "Redis port")
 	flag.StringVar(&redisPassword, "redis-password", "", "Redis password")
 	flag.IntVar(&redisDatabase, "redis-db", 0, "Redis database index")
+	flag.IntVar(&redisPoolSize, "redis-pool-size", 0, "Redis pool size")
+	flag.IntVar(&redisMinIdleConns, "redis-min-idle-conns", 0, "Redis minimum idle connections")
+	flag.IntVar(&redisPoolTimeout, "redis-pool-timeout", 0, "Redis pool timeout in seconds")
+	flag.StringVar(&dbHost, "db-host", "", "Database host")
+	flag.IntVar(&dbPort, "db-port", 0, "Database port")
+	flag.StringVar(&dbUser, "db-user", "", "Database user")
+	flag.StringVar(&dbPassword, "db-password", "", "Database password")
+	flag.StringVar(&dbName, "db-name", "", "Database name")
+	flag.StringVar(&dbSSLMode, "db-ssl-mode", "", "Database SSL mode")
 
 	flag.Parse()
 
@@ -115,21 +134,59 @@ func loadConfig() {
 		}
 	}
 
-	// Override with command-line arguments
-	defaultConfig.Proxy.Address = helper.SetValue(proxyAddress, defaultConfig.Proxy.Address).(string)
-	defaultConfig.Manager.Address = helper.SetValue(managerAddress, defaultConfig.Manager.Address).(string)
-	defaultConfig.Admin.Address = helper.SetValue(adminAddress, defaultConfig.Admin.Address).(string)
-	defaultConfig.AdminSecretKey = helper.SetValue(adminSecretKey, defaultConfig.AdminSecretKey).(string)
-	defaultConfig.TLS.CertificatePath = helper.SetValue(tlsCert, defaultConfig.TLS.CertificatePath).(string)
-	defaultConfig.TLS.KeyPath = helper.SetValue(tlsKey, defaultConfig.TLS.KeyPath).(string)
+	// Override with environment variables if no CLI or file value is provided
+	adminAddress = helper.SetValue(adminAddress, os.Getenv("ADMIN_ADDR")).(string)
+	managerAddress = helper.SetValue(managerAddress, os.Getenv("MANAGER_ADDR")).(string)
+	proxyAddress = helper.SetValue(proxyAddress, os.Getenv("PROXY_ADDR")).(string)
+	adminSecretKey = helper.SetValue(adminSecretKey, os.Getenv("ADMIN_SECRET_KEY")).(string)
+	tlsCert = helper.SetValue(tlsCert, os.Getenv("TLS_CERT")).(string)
+	tlsKey = helper.SetValue(tlsKey, os.Getenv("TLS_KEY")).(string)
+	redisHost = helper.SetValue(redisHost, os.Getenv("REDIS_HOST")).(string)
+	redisPort = helper.SetValue(redisPort, parseEnvInt("REDIS_PORT", redisPort)).(int)
+	redisPassword = helper.SetValue(redisPassword, os.Getenv("REDIS_PASSWORD")).(string)
+	redisDatabase = helper.SetValue(redisDatabase, parseEnvInt("REDIS_DB", redisDatabase)).(int)
+	redisPoolSize = helper.SetValue(redisPoolSize, parseEnvInt("REDIS_POOL_SIZE", redisPoolSize)).(int)
+	redisMinIdleConns = helper.SetValue(redisMinIdleConns, parseEnvInt("REDIS_MIN_IDLE_CONNS", redisMinIdleConns)).(int)
+	redisPoolTimeout = helper.SetValue(redisPoolTimeout, parseEnvInt("REDIS_POOL_TIMEOUT", redisPoolTimeout)).(int)
+	dbHost = helper.SetValue(dbHost, os.Getenv("DB_HOST")).(string)
+	dbPort = helper.SetValue(dbPort, parseEnvInt("DB_PORT", dbPort)).(int)
+	dbUser = helper.SetValue(dbUser, os.Getenv("DB_USER")).(string)
+	dbPassword = helper.SetValue(dbPassword, os.Getenv("DB_PASSWORD")).(string)
+	dbName = helper.SetValue(dbName, os.Getenv("DB_NAME")).(string)
+	dbSSLMode = helper.SetValue(dbSSLMode, os.Getenv("DB_SSL_MODE")).(string)
 
-	// Redis configuration
-	defaultConfig.Redis.Host = helper.SetValue(redisHost, defaultConfig.Redis.Host).(string)
-	defaultConfig.Redis.Port = helper.SetValue(redisPort, defaultConfig.Redis.Port).(int)
-	defaultConfig.Redis.Password = helper.SetValue(redisPassword, defaultConfig.Redis.Password).(string)
-	defaultConfig.Redis.Database = helper.SetValue(redisDatabase, defaultConfig.Redis.Database).(int)
+	// Apply values
+	defaultConfig.Admin.Address = adminAddress
+	defaultConfig.Manager.Address = managerAddress
+	defaultConfig.Proxy.Address = proxyAddress
+	defaultConfig.AdminSecretKey = adminSecretKey
+	defaultConfig.TLS.CertificatePath = tlsCert
+	defaultConfig.TLS.KeyPath = tlsKey
+	defaultConfig.Redis.Host = redisHost
+	defaultConfig.Redis.Port = redisPort
+	defaultConfig.Redis.Password = redisPassword
+	defaultConfig.Redis.Database = redisDatabase
+	defaultConfig.Redis.PoolSize = redisPoolSize
+	defaultConfig.Redis.MinIdleConns = redisMinIdleConns
+	defaultConfig.Redis.PoolTimeout = redisPoolTimeout
+	defaultConfig.Database.Host = dbHost
+	defaultConfig.Database.Port = dbPort
+	defaultConfig.Database.User = dbUser
+	defaultConfig.Database.Password = dbPassword
+	defaultConfig.Database.Database = dbName
+	defaultConfig.Database.SSLMode = dbSSLMode
 
 	appConfig = defaultConfig
+}
+
+// Helper function to parse environment variables as integers
+func parseEnvInt(key string, defaultValue int) int {
+	if value, ok := os.LookupEnv(key); ok {
+		if intValue, err := strconv.Atoi(value); err == nil {
+			return intValue
+		}
+	}
+	return defaultValue
 }
 
 func GetConfig() (AppConfig, error) {
