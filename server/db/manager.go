@@ -58,7 +58,7 @@ func Migrate() {
 		log.Fatal(err)
 	}
 
-	if tx := connection.AutoMigrate(&Domain{}); tx.Error != nil {
+	if tx := connection.AutoMigrate(&Domain{}, &DailyConsumption{}); tx.Error != nil {
 		log.Fatal(tx.Error)
 	}
 }

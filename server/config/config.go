@@ -134,6 +134,11 @@ func loadConfig() {
 		}
 	}
 
+	if defaultConfig.AdminSecretKey != "" {
+		appConfig = defaultConfig
+		return
+	}
+
 	// Override with environment variables if no CLI or file value is provided
 	adminAddress = helper.SetValue(adminAddress, os.Getenv("ADMIN_ADDR")).(string)
 	managerAddress = helper.SetValue(managerAddress, os.Getenv("MANAGER_ADDR")).(string)
