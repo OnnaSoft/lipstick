@@ -7,9 +7,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
-	"github.com/juliotorresmoreno/lipstick/common"
-	"github.com/juliotorresmoreno/lipstick/proxy"
 	"github.com/juliotorresmoreno/lipstick/server/auth"
+	"github.com/juliotorresmoreno/lipstick/server/common"
+	"github.com/juliotorresmoreno/lipstick/server/proxy"
 )
 
 var upgrader = websocket.Upgrader{

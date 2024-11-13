@@ -5,11 +5,11 @@ import (
 	"os"
 	"os/signal"
 
-	"github.com/juliotorresmoreno/lipstick/admin"
-	"github.com/juliotorresmoreno/lipstick/manager"
-	"github.com/juliotorresmoreno/lipstick/proxy"
+	"github.com/juliotorresmoreno/lipstick/server/admin"
 	"github.com/juliotorresmoreno/lipstick/server/config"
 	"github.com/juliotorresmoreno/lipstick/server/db"
+	"github.com/juliotorresmoreno/lipstick/server/manager"
+	"github.com/juliotorresmoreno/lipstick/server/proxy"
 )
 
 func main() {

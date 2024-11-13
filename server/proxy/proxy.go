@@ -5,8 +5,8 @@ import (
 	"log"
 	"net"
 
-	"github.com/juliotorresmoreno/lipstick/common"
 	"github.com/juliotorresmoreno/lipstick/helper"
+	"github.com/juliotorresmoreno/lipstick/server/common"
 )
 
 type Proxy struct {

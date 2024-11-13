@@ -8,7 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
-	"github.com/juliotorresmoreno/lipstick/common"
+	"github.com/juliotorresmoreno/lipstick/server/common"
 )
 
 type NetworkHub struct {
