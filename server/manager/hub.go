@@ -16,9 +16,9 @@ import (
 type NetworkHub struct {
 	HubName              string
 	clientConnections    map[string]net.Conn
-	webSocketConnections map[*websocket.Conn]bool
+	webSocketConnections map[*WebSocketWrapper]bool
 	registerWebSocket    chan *websocketConn
-	unregisterWebSocket  chan *websocketConn
+	unregisterWebSocket  chan *WebSocketWrapper
 	incomingClientConn   chan *common.RemoteConn
 	serverRequests       chan *request
 	trafficManager       *traffic.TrafficManager
@@ -32,15 +32,12 @@ type NetworkHub struct {
 
 func NewNetworkHub(name string, unregister chan string, trafficManager *traffic.TrafficManager, threshold int64) *NetworkHub {
 	return &NetworkHub{
-		HubName: name,
-		// Mapa de conexiones de clientes
-		clientConnections: make(map[string]net.Conn),
-		// Mapa de conexiones WebSocket
-		webSocketConnections: make(map[*websocket.Conn]bool),
+		HubName:              name,
+		clientConnections:    make(map[string]net.Conn),
+		webSocketConnections: make(map[*WebSocketWrapper]bool),
 		registerWebSocket:    make(chan *websocketConn),
-		unregisterWebSocket:  make(chan *websocketConn),
+		unregisterWebSocket:  make(chan *WebSocketWrapper),
 		incomingClientConn:   make(chan *common.RemoteConn),
-		// Canal de peticiones al servidor
 		serverRequests:       make(chan *request),
 		trafficManager:       trafficManager,
 		clientUnregister:     unregister,
@@ -84,7 +81,9 @@ func (hub *NetworkHub) syncConnections(pipe net.Conn, destination *websocket.Con
 		n, err := pipe.Read(buffer)
 		if err != nil {
 			closeMessage := websocket.FormatCloseMessage(websocket.CloseNormalClosure, "")
-			destination.WriteMessage(websocket.CloseMessage, closeMessage)
+			if writeErr := destination.WriteMessage(websocket.CloseMessage, closeMessage); writeErr != nil {
+				return
+			}
 			return
 		}
 		err = destination.WriteMessage(websocket.BinaryMessage, buffer[:n])
@@ -104,7 +103,7 @@ func (hub *NetworkHub) addDataUsage(bytes int64) {
 
 	if hub.dataUsageAccumulator >= hub.threshold {
 		hub.trafficManager.AddTraffic(hub.HubName, hub.dataUsageAccumulator)
-		hub.dataUsageAccumulator = 0 // Reset after sending
+		hub.dataUsageAccumulator = 0
 	}
 }
 
@@ -118,17 +117,18 @@ func (hub *NetworkHub) listen() {
 				continue
 			}
 			if hub.webSocketConnections == nil {
-				hub.webSocketConnections = make(map[*websocket.Conn]bool)
+				hub.webSocketConnections = make(map[*WebSocketWrapper]bool)
 			}
-			hub.webSocketConnections[conn.Conn] = true
+			ws := NewWebSocketWrapper(conn.Conn, 50)
+			hub.webSocketConnections[ws] = true
 			if hub.webSocketConnections != nil {
-				go hub.checkConnection(conn)
+				go hub.checkConnection(ws)
 			}
-		case conn := <-hub.unregisterWebSocket:
-			conn.Close()
+		case ws := <-hub.unregisterWebSocket:
+			ws.Close()
 			connections := hub.webSocketConnections
-			if connections[conn.Conn] {
-				delete(connections, conn.Conn)
+			if connections[ws] {
+				delete(connections, ws)
 			}
 		case request := <-hub.serverRequests:
 			destination := request.conn
@@ -149,7 +149,7 @@ func (hub *NetworkHub) listen() {
 			}
 
 			hub.clientConnections[ticket] = remoteConn
-			conns := make([]*websocket.Conn, 0, len(hub.webSocketConnections))
+			conns := make([]*WebSocketWrapper, 0, len(hub.webSocketConnections))
 			for key := range hub.webSocketConnections {
 				conns = append(conns, key)
 			}
@@ -161,8 +161,8 @@ func (hub *NetworkHub) listen() {
 			}
 
 			rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
-			conn := conns[rnd.Intn(len(conns))]
-			conn.WriteJSON(map[string]string{"uuid": ticket})
+			ws := conns[rnd.Intn(len(conns))]
+			ws.WriteMessage(websocket.TextMessage, []byte(ticket))
 		case <-hub.shutdownSignal:
 			close(hub.registerWebSocket)
 			close(hub.incomingClientConn)
@@ -174,11 +174,11 @@ func (hub *NetworkHub) listen() {
 	}
 }
 
-func (hub *NetworkHub) checkConnection(conn *websocketConn) {
-	defer conn.Close()
+func (hub *NetworkHub) checkConnection(ws *WebSocketWrapper) {
+	defer ws.Close()
 	for {
-		if _, _, err := conn.ReadMessage(); err != nil {
-			hub.unregisterWebSocket <- conn
+		if _, _, err := ws.ReadMessage(); err != nil {
+			hub.unregisterWebSocket <- ws
 			break
 		}
 	}

@@ -48,9 +48,10 @@ func (p *PostgresAuthManager) GetDomain(domain string) (*Domain, error) {
 	}
 
 	return &Domain{
-		ID:     result.ID,
-		Name:   result.Name,
-		ApiKey: result.ApiKey,
+		ID:                       result.ID,
+		Name:                     result.Name,
+		ApiKey:                   result.ApiKey,
+		AllowMultipleConnections: result.AllowMultipleConnections,
 	}, nil
 }
 

@@ -2,7 +2,6 @@ package main
 
 import (
 	"crypto/tls"
-	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -22,6 +21,15 @@ import (
 
 var configuration, _ = config.GetConfig()
 var baseServerURL = configuration.ServerUrl
+var client = &http.Client{
+	Transport: &http.Transport{
+		MaxIdleConns:        1000,             // Máximo de conexiones ociosas
+		IdleConnTimeout:     90 * time.Second, // Tiempo máximo de inactividad
+		DisableKeepAlives:   false,            // Keep-Alive habilitado
+		MaxIdleConnsPerHost: 100,              // Conexiones ociosas permitidas por host
+		TLSClientConfig:     &tls.Config{InsecureSkipVerify: true},
+	},
+}
 
 func main() {
 	interruptChannel := make(chan os.Signal, 1)
@@ -77,6 +85,7 @@ func sendPingMessages(connection *websocket.Conn) {
 		time.Sleep(30 * time.Second)
 		err := connection.WriteMessage(websocket.PingMessage, nil)
 		if err != nil {
+			fmt.Println("Error al enviar mensaje de ping:", err)
 			break
 		}
 	}
@@ -114,19 +123,15 @@ func handleWebSocketMessages(connection *websocket.Conn, proxyTarget string) {
 	}()
 
 	for {
-		_, message, err := connection.ReadMessage()
+		_, ticket, err := connection.ReadMessage()
 		if err != nil {
+			fmt.Println("Error al leer mensaje del servidor WebSocket:", err)
 			break
 		}
-		messageContent := struct {
-			UUID string `json:"uuid"`
-		}{}
-		json.Unmarshal(message, &messageContent)
 
-		protocol, targetAddress := parseTargetEndpoint(proxyTarget)
-
-		if messageContent.UUID != "" {
-			go establishConnection(protocol, targetAddress, messageContent.UUID)
+		if len(ticket) > 0 {
+			protocol, targetAddress := parseTargetEndpoint(proxyTarget)
+			go establishConnection(protocol, targetAddress, string(ticket))
 		}
 	}
 }
@@ -169,6 +174,7 @@ func establishConnection(protocol, proxyTarget, uuid string) {
 	connection.SetReadLimit(1024 * 1024 * 32)
 	_, message, err := connection.ReadMessage()
 	if err != nil && err != io.EOF {
+		log.Printf("Error al leer mensaje del servidor WebSocket: %v\n", err)
 		sendErrorResponse(connection)
 		return
 	}
@@ -181,6 +187,7 @@ func establishConnection(protocol, proxyTarget, uuid string) {
 	}
 
 	if protocol == "http" || protocol == "https" {
+		fmt.Println("Protocolo HTTP no compatible con el mensaje WebSocket")
 		sendErrorResponse(connection)
 		return
 	}
@@ -199,6 +206,7 @@ func handleTCP(connection *websocket.Conn, proxyTarget, protocol string, message
 		})
 	}
 	if err != nil {
+		fmt.Println("Error al conectar al servidor TCP:", err)
 		sendErrorResponse(connection)
 		return
 	}
@@ -206,6 +214,7 @@ func handleTCP(connection *websocket.Conn, proxyTarget, protocol string, message
 
 	_, err = serverConnection.Write(message)
 	if err != nil {
+		fmt.Println("Error al enviar mensaje al servidor TCP:", err)
 		sendErrorResponse(connection)
 		return
 	}
@@ -215,10 +224,12 @@ func handleTCP(connection *websocket.Conn, proxyTarget, protocol string, message
 			buffer := make([]byte, 1024)
 			n, err := serverConnection.Read(buffer)
 			if err != nil {
+				fmt.Println("Error al leer del servidor TCP:", err)
 				break
 			}
 			err = connection.WriteMessage(websocket.BinaryMessage, buffer[:n])
 			if err != nil {
+				fmt.Println("Error al enviar mensaje al cliente WebSocket:", err)
 				break
 			}
 		}
@@ -227,6 +238,7 @@ func handleTCP(connection *websocket.Conn, proxyTarget, protocol string, message
 	for {
 		_, message, err := connection.ReadMessage()
 		if err != nil {
+			fmt.Println("Error al leer del cliente WebSocket:", err)
 			break
 		}
 		serverConnection.Write(message)
@@ -243,11 +255,13 @@ func sendHTTPResponse(connection *websocket.Conn, resp *http.Response) error {
 	}
 	responseHeader := fmt.Sprintf("HTTP/1.1 %d %s\r\n%s\r\n", resp.StatusCode, resp.Status, headers)
 	if err := connection.WriteMessage(websocket.TextMessage, []byte(responseHeader)); err != nil {
+		fmt.Println("Error sending HTTP response header:", err)
 		return err
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
+		fmt.Println("Error reading response body:", err)
 		return err
 	}
 	return connection.WriteMessage(websocket.TextMessage, body)
@@ -259,12 +273,6 @@ func sendErrorResponse(connection *websocket.Conn) {
 
 // handleHTTPRequest forwards HTTP requests using Go's http.Client.
 func handleHTTPRequest(connection *websocket.Conn, serverURL string, req *http.Request, host string) {
-	// Create an HTTP client
-	client := &http.Client{
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-		},
-	}
 
 	// Prepare the request for the target server
 	req.URL, _ = url.Parse(serverURL)
@@ -274,6 +282,7 @@ func handleHTTPRequest(connection *websocket.Conn, serverURL string, req *http.R
 	// Forward the request to the target server
 	resp, err := client.Do(req)
 	if err != nil {
+		fmt.Println("Error forwarding request to server:", err)
 		sendErrorResponse(connection)
 		return
 	}
@@ -282,13 +291,14 @@ func handleHTTPRequest(connection *websocket.Conn, serverURL string, req *http.R
 	// Send the response back to the WebSocket client
 	err = sendHTTPResponse(connection, resp)
 	if err != nil {
-		fmt.Println("Error sending HTTP response:", err)
+		log.Println("Error sending HTTP response:", err)
 	}
 }
 
 func handleHTTP(connection *websocket.Conn, proxyTarget, protocol string, message []byte) {
 	req, err := helper.ParseHTTPRequest(message, connection)
 	if err != nil {
+		fmt.Println("Error parsing HTTP request:", err)
 		sendErrorResponse(connection)
 		return
 	}
@@ -301,6 +311,7 @@ func handleHTTP(connection *websocket.Conn, proxyTarget, protocol string, messag
 
 	requestToServer, err := http.NewRequest(req.Method, serverURL, req.Body)
 	if err != nil {
+		fmt.Println("Error creating request to server:", err)
 		return
 	}
 	requestToServer.Header = req.Header
@@ -325,8 +336,6 @@ func handleWebSocket(connection *websocket.Conn, proxyTarget, protocol string, r
 	var serverConnection net.Conn
 	var err error
 
-	fmt.Println("Estableciendo conexión WebSocket")
-
 	// Establish connection to the WebSocket server
 	if protocol == "http" {
 		serverConnection, err = net.Dial("tcp", proxyTarget)
@@ -336,6 +345,7 @@ func handleWebSocket(connection *websocket.Conn, proxyTarget, protocol string, r
 		})
 	}
 	if err != nil {
+		fmt.Println("Error connecting to server:", err)
 		sendErrorResponse(connection)
 		return
 	}
@@ -345,6 +355,7 @@ func handleWebSocket(connection *websocket.Conn, proxyTarget, protocol string, r
 	buf := helper.HTTPRequestToString(requestToServer)
 	_, err = serverConnection.Write([]byte(buf))
 	if err != nil {
+		fmt.Println("Error sending HTTP request to server:", err)
 		sendErrorResponse(connection)
 		return
 	}
@@ -355,10 +366,12 @@ func handleWebSocket(connection *websocket.Conn, proxyTarget, protocol string, r
 			buffer := make([]byte, 1024)
 			n, err := serverConnection.Read(buffer)
 			if err != nil {
+				fmt.Println("Error reading from server:", err)
 				break
 			}
 			err = connection.WriteMessage(websocket.BinaryMessage, buffer[:n])
 			if err != nil {
+				fmt.Printf("Error al escribir mensaje: %v\n", err)
 				break
 			}
 		}
@@ -368,6 +381,7 @@ func handleWebSocket(connection *websocket.Conn, proxyTarget, protocol string, r
 	for {
 		_, message, err := connection.ReadMessage()
 		if err != nil {
+			fmt.Printf("Error al leer mensaje: %v\n", err)
 			break
 		}
 		serverConnection.Write(message)

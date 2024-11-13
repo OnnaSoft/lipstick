@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"net/http"
 	"sync"
@@ -8,42 +9,97 @@ import (
 )
 
 func main() {
-	var wg sync.WaitGroup
-	url := "http://localhost:5050"
-	requests := 1000000
+	// Definir los parámetros de entrada
+	var url string
+	var targetRate int
+	var totalRequests int
+	flag.StringVar(&url, "url", "http://localhost:8080", "URL objetivo para las peticiones")
+	flag.IntVar(&targetRate, "rate", 500, "Número de peticiones por segundo")
+	flag.IntVar(&totalRequests, "requests", 10000, "Número total de peticiones")
+	flag.Parse()
 
-	// Limita la concurrencia a 10 goroutines
-	concurrencyLimit := make(chan struct{}, 512)
+	concurrencyLimit := 50 // Número máximo de goroutines concurrentes
+
+	var wg sync.WaitGroup
+	concurrencyCh := make(chan struct{}, concurrencyLimit)
+
+	// Map para contar los códigos de estado
+	statusCounts := make(map[int]int)
+	var statusMu sync.Mutex
+
+	// Contadores para estadísticas en tiempo real
+	var completedRequests int
+	var completedRequestsMu sync.Mutex
+
+	// Timer para mantener la tasa de solicitudes
+	ticker := time.NewTicker(time.Second / time.Duration(targetRate))
+	defer ticker.Stop()
 
 	startTime := time.Now()
 
-	for i := 0; i < requests; i++ {
+	// Goroutine para imprimir estadísticas cada segundo
+	go func() {
+		for range time.Tick(1 * time.Second) {
+			elapsed := time.Since(startTime).Seconds()
+			completedRequestsMu.Lock()
+			reqs := completedRequests
+			completedRequestsMu.Unlock()
+
+			statusMu.Lock()
+			// Sobrescribir la línea anterior con \r
+			fmt.Printf("\rTiempo: %.2fs, Completadas: %d, RPS: %.2f", elapsed, reqs, float64(reqs)/elapsed)
+			statusMu.Unlock()
+
+			// Salir del loop si todas las solicitudes están completadas
+			if reqs >= totalRequests {
+				break
+			}
+		}
+	}()
+
+	for i := 0; i < totalRequests; i++ {
+		<-ticker.C // Espacia las solicitudes para mantener la tasa configurada
+
 		wg.Add(1)
-		go func() {
+		go func(requestID int) {
 			defer wg.Done()
 
-			// Adquiere un semáforo para limitar la concurrencia
-			concurrencyLimit <- struct{}{}
-			defer func() { <-concurrencyLimit }()
+			// Adquiere un slot en el limitador de concurrencia
+			concurrencyCh <- struct{}{}
+			defer func() { <-concurrencyCh }()
 
 			resp, err := http.Get(url)
 			if err != nil {
-				fmt.Println("Error en la solicitud:", err)
+				fmt.Printf("\nError en la solicitud #%d: %v\n", requestID, err)
 				return
 			}
 			defer resp.Body.Close()
 
-			// Simplemente imprimir el código de estado, podrías agregar más lógica según tus necesidades.
-			// fmt.Println("Código de estado:", resp.Status)
-		}()
+			// Contar los códigos de estado
+			statusMu.Lock()
+			statusCounts[resp.StatusCode]++
+			statusMu.Unlock()
+
+			// Incrementar el contador de solicitudes completadas
+			completedRequestsMu.Lock()
+			completedRequests++
+			completedRequestsMu.Unlock()
+		}(i)
 	}
 
 	wg.Wait()
 
+	// Estadísticas finales
 	elapsedTime := time.Since(startTime)
-	requestsPerSecond := float64(requests) / elapsedTime.Seconds()
+	actualRate := float64(totalRequests) / elapsedTime.Seconds()
 
-	fmt.Printf("Todas las solicitudes han terminado.\n")
+	fmt.Printf("\nTodas las solicitudes han terminado.\n")
 	fmt.Printf("Tiempo total: %s\n", elapsedTime)
-	fmt.Printf("Peticiones por segundo: %.2f\n", requestsPerSecond)
+	fmt.Printf("Peticiones por segundo: %.2f\n", actualRate)
+
+	// Imprimir estadísticas de códigos de estado
+	fmt.Println("Códigos de estado:")
+	for statusCode, count := range statusCounts {
+		fmt.Printf("  %d: %d\n", statusCode, count)
+	}
 }

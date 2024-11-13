@@ -12,10 +12,15 @@ func main() {
 
 	r.GET("/", func(ctx *gin.Context) {
 		ctx.Status(200)
-		fmt.Fprint(ctx.Writer, "hello ")
+		/*fmt.Fprint(ctx.Writer, "hello ")
 		ctx.Writer.Flush()
-		fmt.Fprint(ctx.Writer, "world")
+		fmt.Fprint(ctx.Writer, "world")*/
+
+		ctx.Writer.Write([]byte("hello world"))
 	})
 
-	r.Run(":12000")
+	err := r.Run(":12000")
+	if err != nil {
+		fmt.Println(err)
+	}
 }
