@@ -172,19 +172,18 @@ func establishConnection(protocol, proxyTarget, uuid string) {
 		return
 	}
 
-	//isHTTP := helper.IsHTTPRequest(string(message))
+	isHTTP := helper.IsHTTPRequest(string(message))
 
-	/*
-		if isHTTP {
-			handleHTTP(connection, proxyTarget, protocol, message)
-			return
-		}
+	if isHTTP {
+		handleHTTP(connection, proxyTarget, protocol, message)
+		return
+	}
 
-		if protocol == "http" || protocol == "https" {
-			fmt.Println("Protocolo HTTP no compatible con el mensaje WebSocket")
-			sendErrorResponse(connection)
-			return
-		}*/
+	if protocol == "http" || protocol == "https" {
+		fmt.Println("Protocolo HTTP no compatible con el mensaje WebSocket")
+		sendErrorResponse(connection)
+		return
+	}
 
 	handleTCP(connection, proxyTarget, protocol, message)
 }
