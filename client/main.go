@@ -21,7 +21,7 @@ import (
 )
 
 var configuration, _ = config.GetConfig()
-var baseServerURL = configuration.ServerUrl
+var websocketURL = configuration.ServerURL
 var client = &http.Client{
 	Transport: &http.Transport{
 		MaxIdleConns:        1000,             // Máximo de conexiones ociosas
@@ -29,6 +29,12 @@ var client = &http.Client{
 		DisableKeepAlives:   false,            // Keep-Alive habilitado
 		MaxIdleConnsPerHost: 100,              // Conexiones ociosas permitidas por host
 		TLSClientConfig:     &tls.Config{InsecureSkipVerify: true},
+		Dial: (&net.Dialer{
+			Timeout:   30 * time.Second, // Tiempo de espera para establecer la conexión
+			KeepAlive: 30 * time.Second, // Tiempo de espera para mantener la conexión
+		}).Dial,
+		WriteBufferSize: 1024,
+		ReadBufferSize:  1024,
 	},
 }
 var wsmanager = manager.NewWebSocketManager(5 * time.Second)
@@ -39,46 +45,35 @@ func main() {
 	interruptChannel := make(chan os.Signal, 1)
 	signal.Notify(interruptChannel, os.Interrupt)
 
-	// Configuración TLS personalizada para ignorar la verificación del certificado SSL
-	tlsConfiguration := &tls.Config{
-		InsecureSkipVerify: true, // Ignorar la verificación del certificado
-	}
-
-	// Crear un marcador con la configuración TLS personalizada
-	websocketDialer := websocket.DefaultDialer
-	websocketDialer.TLSClientConfig = tlsConfiguration
-
-	// Establecer un tiempo de espera para la conexión
-	websocketDialer.HandshakeTimeout = 5 * time.Second
-
-	fmt.Println(baseServerURL, configuration.ProxyPass)
+	fmt.Println(websocketURL, configuration.ProxyPass)
 
 	for _, proxyTarget := range configuration.ProxyPass {
-		go func(proxyTarget string) {
-			retryDelay := 3 * time.Second
-			for {
-				websocketURL := baseServerURL
-				headers := http.Header{}
-				headers.Set("authorization", configuration.Keyword)
-
-				connection, _, err := websocketDialer.Dial(websocketURL, headers)
-				if err != nil {
-					fmt.Println("Error al conectar al servidor WebSocket:", err)
-					time.Sleep(retryDelay)
-					continue
-				}
-				fmt.Println("Cliente WebSocket iniciado. Presiona Ctrl+C para salir.")
-
-				go sendPingMessages(connection)
-				handleWebSocketMessages(connection, proxyTarget)
-				time.Sleep(retryDelay)
-				connection.Close()
-			}
-		}(proxyTarget)
+		go startWebSocketClient(proxyTarget)
 	}
 
 	<-interruptChannel
 	fmt.Println("Desconectando...")
+}
+
+func startWebSocketClient(proxyTarget string) {
+	retryDelay := 3 * time.Second
+	headers := http.Header{}
+	headers.Set("authorization", configuration.APISecret)
+
+	for {
+		connection, err := wsmanager.Connect(websocketURL, headers)
+		if err != nil {
+			fmt.Println("Error al conectar al servidor WebSocket:", err)
+			time.Sleep(retryDelay)
+			continue
+		}
+		fmt.Println("Cliente WebSocket iniciado. Presiona Ctrl+C para salir.")
+
+		go sendPingMessages(connection)
+		handleWebSocketMessages(connection, proxyTarget)
+		time.Sleep(retryDelay)
+		connection.Close()
+	}
 }
 
 func sendPingMessages(connection *websocket.Conn) {
@@ -158,9 +153,9 @@ var httpErrorContent = `<!DOCTYPE html>
 var httpErrorResponse = httpErrorHeader + fmt.Sprint(len(httpErrorContent)) + "\n\n" + httpErrorContent
 
 func establishConnection(protocol, proxyTarget, uuid string) {
-	websocketURL := baseServerURL + "/" + uuid
+	url := websocketURL + "/" + uuid
 
-	connection, err := wsmanager.Connect(websocketURL)
+	connection, err := wsmanager.Connect(url, nil)
 	if err != nil {
 		log.Printf("Error al conectar al servidor WebSocket: %v\n", err)
 		return
@@ -170,7 +165,6 @@ func establishConnection(protocol, proxyTarget, uuid string) {
 		connection.WriteMessage(websocket.CloseMessage, closeMessage)
 		connection.Close()
 	}()
-	connection.SetReadLimit(1024 * 1024 * 32)
 	_, message, err := connection.ReadMessage()
 	if err != nil && err != io.EOF {
 		log.Printf("Error al leer mensaje del servidor WebSocket: %v\n", err)

@@ -10,7 +10,6 @@ import (
 type WebSocketWrapper struct {
 	*websocket.Conn
 	writeChan chan messageWrapper
-	closeChan chan struct{}
 	closed    bool
 }
 
@@ -25,7 +24,6 @@ func NewWebSocketWrapper(conn *websocket.Conn, bufferSize int) *WebSocketWrapper
 	w := &WebSocketWrapper{
 		conn,
 		make(chan messageWrapper, bufferSize),
-		make(chan struct{}),
 		false,
 	}
 	go w.writeLoop()
@@ -50,20 +48,14 @@ func (w *WebSocketWrapper) Close() error {
 		return nil
 	}
 	w.closed = true
-	close(w.closeChan)
+	close(w.writeChan)
 	return w.Conn.Close()
 }
 
 func (w *WebSocketWrapper) writeLoop() {
-	for {
-		select {
-		case msg := <-w.writeChan:
-			err := w.Conn.WriteMessage(msg.messageType, msg.payload)
-			if err != nil {
-				return
-			}
-		case <-w.closeChan:
-			close(w.writeChan)
+	for msg := range w.writeChan {
+		err := w.Conn.WriteMessage(msg.messageType, msg.payload)
+		if err != nil {
 			return
 		}
 	}

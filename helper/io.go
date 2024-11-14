@@ -10,7 +10,7 @@ import (
 // CopyData transfiere datos desde la conexión de origen (src) hacia la conexión de destino (dst).
 func CopyData(destination, source net.Conn) (int64, error) {
 	var totalBytesWritten int64
-	buffer := make([]byte, 32*1024) // Tamaño del buffer: 32 KB
+	buffer := make([]byte, 1024) // Tamaño del buffer: 32 KB
 
 	for {
 		// Leer datos del origen

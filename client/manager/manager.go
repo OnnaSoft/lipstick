@@ -2,6 +2,7 @@ package manager
 
 import (
 	"log"
+	"net/http"
 	"sync"
 	"time"
 
@@ -24,12 +25,12 @@ func NewWebSocketManager(timeout time.Duration) *WebSocketManager {
 }
 
 // Connect creates a new WebSocket connection for a given URL and stores it.
-func (wm *WebSocketManager) Connect(url string) (*websocket.Conn, error) {
+func (wm *WebSocketManager) Connect(url string, headers http.Header) (*websocket.Conn, error) {
 	wm.mu.Lock()
 	defer wm.mu.Unlock()
 
 	// Create a new connection
-	conn, _, err := wm.dialer.Dial(url, nil)
+	conn, _, err := wm.dialer.Dial(url, headers)
 	if err != nil {
 		log.Printf("Error creating WebSocket connection: %v\n", err)
 		return nil, err

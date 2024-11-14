@@ -6,7 +6,6 @@ import (
 	"io"
 	"log"
 	"os"
-	"path"
 	"path/filepath"
 	"strings"
 
@@ -15,65 +14,76 @@ import (
 )
 
 type Config struct {
-	Keyword   string   `yaml:"keyword"`
-	ServerUrl string   `yaml:"serverUrl"`
-	ProxyPass []string `yaml:"proxyPass"`
+	APISecret string   `yaml:"api_secret"` // API secret for authentication
+	ServerURL string   `yaml:"server_url"` // URL of the server manager
+	ProxyPass []string `yaml:"proxy_pass"` // List of proxy targets
+	Workers   int      `yaml:"workers"`    // Number of worker routines
 }
 
-var config interface{}
+var config *Config
 
+// loadConfig reads the configuration file and merges it with CLI arguments
 func loadConfig() {
-	var configPath string = ""
-	var serverUrl string = ""
-	var proxyPass string = ""
-	var secret = ""
+	var (
+		configPath string
+		serverURL  string
+		proxyPass  string
+		apiSecret  string
+		workers    int
+	)
 
-	result := Config{}
-	dir, err := filepath.Abs(filepath.Dir(os.Args[0]))
-	if err != nil {
-		log.Fatal(err)
+	// Default configuration
+	result := Config{
+		Workers: 10, // Default number of workers
 	}
-	configPathDefault := path.Join(dir, "config.client.yml")
-	flag.StringVar(&configPath, "c", configPathDefault, "config path")
 
-	flag.StringVar(&serverUrl, "s", "ws://localhost:5051/ws", "Where you are listening your server manager port")
-	flag.StringVar(&proxyPass, "p", "tcp://127.0.0.1:12000", "Host/port where you want connect from the remote server")
-	flag.StringVar(&secret, "k", "", "Private secret use to autenticate nodes")
+	// Set default configuration path relative to the executable's location
+	execDir, err := filepath.Abs(filepath.Dir(os.Args[0]))
+	if err != nil {
+		log.Fatalf("Failed to determine executable directory: %v", err)
+	}
+	defaultConfigPath := filepath.Join(execDir, "config.client.yml")
 
+	// CLI Flags
+	flag.StringVar(&configPath, "c", defaultConfigPath, "Path to the configuration file")
+	flag.StringVar(&serverURL, "s", "ws://localhost:5051/ws", "URL for the server manager WebSocket")
+	flag.StringVar(&proxyPass, "p", "tcp://127.0.0.1:12000", "Proxy targets separated by spaces")
+	flag.StringVar(&apiSecret, "k", "", "API secret for authenticating nodes")
+	flag.IntVar(&workers, "w", 1, "Number of worker routines")
 	flag.Parse()
 
-	f, err := os.Open(configPath)
-	if err == nil {
-		buff, err := io.ReadAll(f)
+	// Load YAML config file
+	if file, err := os.Open(configPath); err == nil {
+		defer file.Close()
+		content, err := io.ReadAll(file)
 		if err != nil {
-			return
+			log.Printf("Error reading config file: %v", err)
+		} else if err := yaml.Unmarshal(content, &result); err != nil {
+			log.Printf("Error parsing config file: %v", err)
 		}
-		err = yaml.Unmarshal(buff, &result)
-		if err != nil {
-			return
-		}
+	} else {
+		log.Printf("No configuration file found at %s. Using defaults and CLI args.", configPath)
 	}
 
-	result.ServerUrl = helper.SetValue(serverUrl, result.ServerUrl).(string)
-	proxies := strings.Split(proxyPass, " ")
-	if len(proxies) > 0 {
-		result.ProxyPass = proxies
+	// Merge CLI arguments
+	result.ServerURL = helper.SetValue(serverURL, result.ServerURL).(string)
+	if proxyPass != "" {
+		result.ProxyPass = strings.Fields(proxyPass)
 	}
-	result.Keyword = helper.SetValue(secret, result.Keyword).(string)
+	result.APISecret = helper.SetValue(apiSecret, result.APISecret).(string)
+	result.Workers = helper.SetValue(workers, result.Workers).(int)
 
-	config = result
+	// Store in global config
+	config = &result
 }
 
-func GetConfig() (Config, error) {
-	if config != nil {
-		return config.(Config), nil
-	}
-
-	loadConfig()
-
+// GetConfig provides the application configuration
+func GetConfig() (*Config, error) {
 	if config == nil {
-		log.Fatal(errors.New("could not load config"))
+		loadConfig()
+		if config == nil {
+			return nil, errors.New("failed to load configuration")
+		}
 	}
-
-	return config.(Config), nil
+	return config, nil
 }
