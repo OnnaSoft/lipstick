@@ -57,7 +57,7 @@ func WriteJSON(w *WebSocketIO, v interface{}) error {
 	return w.WriteMessage(websocket.TextMessage, b)
 }
 
-func WriteControl(w *WebSocketIO, messageType int, data []byte) error {
+func (w *WebSocketIO) WriteControl(messageType int, data []byte) error {
 	return w.WriteMessage(messageType, data)
 }
 
