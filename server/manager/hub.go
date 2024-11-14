@@ -134,8 +134,10 @@ func (hub *NetworkHub) listen() {
 			destination := request.conn
 			pipe, exists := hub.clientConnections[request.uuid]
 			if !exists {
-				destination.WriteMessage(websocket.TextMessage, []byte(badGatewayResponse))
-				destination.Close()
+				func() {
+					destination.WriteMessage(websocket.TextMessage, []byte(badGatewayResponse))
+					destination.Close()
+				}()
 				continue
 			}
 			delete(hub.clientConnections, request.uuid)
@@ -162,7 +164,7 @@ func (hub *NetworkHub) listen() {
 
 			rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
 			ws := conns[rnd.Intn(len(conns))]
-			ws.WriteMessage(websocket.TextMessage, []byte(ticket))
+			go ws.WriteMessage(websocket.TextMessage, []byte(ticket))
 		case <-hub.shutdownSignal:
 			close(hub.registerWebSocket)
 			close(hub.incomingClientConn)
