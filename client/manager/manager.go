@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/juliotorresmoreno/lipstick/helper"
 )
 
 type WebSocketManager struct {
@@ -25,7 +26,7 @@ func NewWebSocketManager(timeout time.Duration) *WebSocketManager {
 }
 
 // Connect creates a new WebSocket connection for a given URL and stores it.
-func (wm *WebSocketManager) Connect(url string, headers http.Header) (*websocket.Conn, error) {
+func (wm *WebSocketManager) Connect(url string, headers http.Header) (*helper.WebSocketIO, error) {
 	wm.mu.Lock()
 	defer wm.mu.Unlock()
 
@@ -38,7 +39,7 @@ func (wm *WebSocketManager) Connect(url string, headers http.Header) (*websocket
 
 	// Store the connection by its URL
 	wm.conns[url] = conn
-	return conn, nil
+	return helper.NewWebSocketIO(conn), nil
 }
 
 // CloseConnection closes a specific WebSocket connection.

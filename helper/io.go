@@ -3,12 +3,12 @@ package helper
 import (
 	"fmt"
 	"io"
-	"net"
 	"net/http"
+	"os"
 )
 
 // CopyData transfiere datos desde la conexión de origen (src) hacia la conexión de destino (dst).
-func CopyData(destination, source net.Conn) (int64, error) {
+func Copy(destination, source io.ReadWriter) (int64, error) {
 	var totalBytesWritten int64
 	buffer := make([]byte, 1024) // Tamaño del buffer: 32 KB
 
@@ -19,7 +19,7 @@ func CopyData(destination, source net.Conn) (int64, error) {
 			// Escribir datos en el destino
 			bytesWritten, writeErr := destination.Write(buffer[:bytesRead])
 			totalBytesWritten += int64(bytesWritten)
-			//os.Stdout.Write(buffer[:bytesRead])
+			os.Stdout.Write(buffer[:bytesRead])
 
 			// Manejar errores de escritura
 			if writeErr != nil {
@@ -40,7 +40,7 @@ func CopyData(destination, source net.Conn) (int64, error) {
 				fmt.Println("EOF alcanzado: conexión de lectura cerrada.")
 				break
 			}
-			fmt.Println("Error: conexión de lectura cerrada inesperadamente.")
+			fmt.Println("Error: conexión de lectura cerrada inesperadamente.", readErr)
 			return totalBytesWritten, fmt.Errorf("error reading from source: %w", readErr)
 		}
 	}

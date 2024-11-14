@@ -10,64 +10,70 @@ import (
 	"net/http"
 	"reflect"
 	"strings"
-	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/gorilla/websocket"
 )
 
+type messageWrapper struct {
+	messageType int
+	payload     []byte
+}
+
 type WebSocketIO struct {
-	conn *websocket.Conn
-	buff []byte
+	*websocket.Conn
+	buff    []byte
+	closed  bool
+	writeCh chan *messageWrapper
 }
 
 // NewWebSocketIO crea una nueva instancia de WebSocketIO.
 func NewWebSocketIO(conn *websocket.Conn) *WebSocketIO {
-	return &WebSocketIO{conn: conn}
+	ws := &WebSocketIO{Conn: conn, writeCh: make(chan *messageWrapper)}
+	go ws.processWrite()
+	return ws
+}
+
+func (w *WebSocketIO) processWrite() {
+	for data := range w.writeCh {
+		w.Conn.WriteMessage(data.messageType, data.payload)
+	}
 }
 
 func (w *WebSocketIO) SetBuffer(buff []byte) {
 	w.buff = buff
 }
 
-// LocalAddr devuelve la dirección local de la conexión.
-func (w *WebSocketIO) LocalAddr() net.Addr {
-	return w.conn.LocalAddr()
+func (w *WebSocketIO) WriteMessage(messageType int, data []byte) error {
+	w.writeCh <- &messageWrapper{messageType, data}
+	return nil
 }
 
-// RemoteAddr devuelve la dirección remota de la conexión.
-func (w *WebSocketIO) RemoteAddr() net.Addr {
-	return w.conn.RemoteAddr()
-}
-
-// SetDeadline establece el tiempo de espera para lectura y escritura.
-func (w *WebSocketIO) SetDeadline(t time.Time) error {
-	if err := w.conn.SetReadDeadline(t); err != nil {
+func WriteJSON(w *WebSocketIO, v interface{}) error {
+	b, err := sonic.Marshal(v)
+	if err != nil {
 		return err
 	}
-	return w.conn.SetWriteDeadline(t)
+	return w.WriteMessage(websocket.TextMessage, b)
 }
 
-// SetReadDeadline establece el tiempo de espera para lectura.
-func (w *WebSocketIO) SetReadDeadline(t time.Time) error {
-	return w.conn.SetReadDeadline(t)
-}
-
-// SetWriteDeadline establece el tiempo de espera para escritura.
-func (w *WebSocketIO) SetWriteDeadline(t time.Time) error {
-	return w.conn.SetWriteDeadline(t)
+func WriteControl(w *WebSocketIO, messageType int, data []byte) error {
+	return w.WriteMessage(messageType, data)
 }
 
 // Close cierra la conexión WebSocket.
 func (w *WebSocketIO) Close() error {
-	return w.conn.Close()
+	if w.closed {
+		return nil
+	}
+	w.closed = true
+	close(w.writeCh)
+	return w.Conn.Close()
 }
 
 // Write escribe datos en la conexión WebSocket como un mensaje de texto.
 func (w *WebSocketIO) Write(p []byte) (int, error) {
-	err := w.conn.WriteMessage(websocket.BinaryMessage, p)
-	if err != nil {
-		return 0, err
-	}
+	w.writeCh <- &messageWrapper{websocket.BinaryMessage, p}
 	return len(p), nil
 }
 
@@ -79,7 +85,7 @@ func (w *WebSocketIO) Read(p []byte) (int, error) {
 		return n, nil
 	}
 
-	messageType, message, err := w.conn.ReadMessage()
+	messageType, message, err := w.Conn.ReadMessage()
 	if err != nil {
 		return 0, err
 	}
@@ -171,7 +177,7 @@ func IsHTTPRequest(data string) bool {
 	return strings.HasPrefix(version, "HTTP/")
 }
 
-func ReadHTTPRequestFromWebSocket(conn *websocket.Conn, data []byte) ([]byte, error) {
+func ReadHTTPRequestFromWebSocket(conn *WebSocketIO, data []byte) ([]byte, error) {
 	// Inicializar el buffer con los datos iniciales
 	buffer := bytes.NewBuffer(data)
 
@@ -195,7 +201,7 @@ func ReadHTTPRequestFromWebSocket(conn *websocket.Conn, data []byte) ([]byte, er
 	return buffer.Bytes(), nil
 }
 
-func ParseHTTPRequest(data []byte, conn *websocket.Conn) (*http.Request, error) {
+func ParseHTTPRequest(data []byte, conn *WebSocketIO) (*http.Request, error) {
 	// Leer todo el cuerpo HTTP desde el WebSocket
 	completeData, err := ReadHTTPRequestFromWebSocket(conn, data)
 	if err != nil {

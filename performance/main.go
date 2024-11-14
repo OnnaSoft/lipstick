@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 )
@@ -71,6 +72,7 @@ func main() {
 			resp, err := http.Get(url)
 			if err != nil {
 				fmt.Printf("\nError en la solicitud #%d: %v\n", requestID, err)
+				os.Exit(1) // Salir del programa si hay un error
 				return
 			}
 			defer resp.Body.Close()

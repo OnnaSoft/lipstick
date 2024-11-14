@@ -2,7 +2,6 @@ package manager
 
 import (
 	"fmt"
-	"math/rand"
 	"net"
 	"sync"
 	"time"
@@ -12,6 +11,8 @@ import (
 	"github.com/juliotorresmoreno/lipstick/server/common"
 	"github.com/juliotorresmoreno/lipstick/server/traffic"
 )
+
+var rng = common.NewXORShift(uint32(time.Now().UnixNano()))
 
 type NetworkHub struct {
 	HubName              string
@@ -143,28 +144,31 @@ func (hub *NetworkHub) listen() {
 			delete(hub.clientConnections, request.uuid)
 			go hub.syncConnections(pipe, destination)
 		case remoteConn := <-hub.incomingClientConn:
-			ticket := uuid.NewString()
-			if hub.webSocketConnections == nil {
+			if len(hub.webSocketConnections) == 0 {
 				fmt.Fprint(remoteConn, badGatewayResponse)
 				remoteConn.Close()
 				continue
 			}
 
-			hub.clientConnections[ticket] = remoteConn
 			conns := make([]*WebSocketWrapper, 0, len(hub.webSocketConnections))
 			for key := range hub.webSocketConnections {
 				conns = append(conns, key)
 			}
 
-			if len(conns) == 0 {
+			var ws *WebSocketWrapper
+			if len(conns) == 1 {
+				ws = conns[0]
+			} else {
+				ws = conns[int(rng.Next()%uint32(len(conns)))]
+			}
+			ticket := uuid.NewString()
+			hub.clientConnections[ticket] = remoteConn
+			err := ws.WriteMessage(websocket.TextMessage, []byte(ticket))
+			if err != nil {
 				fmt.Fprint(remoteConn, badGatewayResponse)
 				remoteConn.Close()
-				continue
+				delete(hub.clientConnections, ticket)
 			}
-
-			rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
-			ws := conns[rnd.Intn(len(conns))]
-			go ws.WriteMessage(websocket.TextMessage, []byte(ticket))
 		case <-hub.shutdownSignal:
 			close(hub.registerWebSocket)
 			close(hub.incomingClientConn)
