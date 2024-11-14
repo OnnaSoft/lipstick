@@ -201,17 +201,9 @@ func ReadHTTPRequestFromWebSocket(conn *WebSocketIO, data []byte) ([]byte, error
 	return buffer.Bytes(), nil
 }
 
-func ParseHTTPRequest(data []byte, conn *WebSocketIO) (*http.Request, error) {
-	// Leer todo el cuerpo HTTP desde el WebSocket
-	completeData, err := ReadHTTPRequestFromWebSocket(conn, data)
-	if err != nil {
-		return nil, err
-	}
+func ParseHTTPRequest(conn *WebSocketIO) (*http.Request, error) {
+	reader := bufio.NewReader(conn)
 
-	// Crear un reader para los datos acumulados
-	reader := bufio.NewReader(bytes.NewReader(completeData))
-
-	// Parsear la solicitud HTTP
 	request, err := http.ReadRequest(reader)
 	if err != nil {
 		return nil, fmt.Errorf("error parsing HTTP request: %w", err)

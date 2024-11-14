@@ -173,9 +173,10 @@ func establishConnection(protocol, proxyTarget, uuid string) {
 	}
 
 	isHTTP := helper.IsHTTPRequest(string(message))
+	connection.SetBuffer(message)
 
 	if isHTTP {
-		handleHTTP(connection, proxyTarget, protocol, message)
+		handleHTTP(connection, proxyTarget, protocol)
 		return
 	}
 
@@ -185,10 +186,10 @@ func establishConnection(protocol, proxyTarget, uuid string) {
 		return
 	}
 
-	handleTCP(connection, proxyTarget, protocol, message)
+	handleTCP(connection, proxyTarget, protocol)
 }
 
-func handleTCP(connection *helper.WebSocketIO, proxyTarget, protocol string, message []byte) {
+func handleTCP(connection *helper.WebSocketIO, proxyTarget, protocol string) {
 	var err error
 	var serverConnection net.Conn
 	if protocol == "tcp" || protocol == "http" {
@@ -204,13 +205,6 @@ func handleTCP(connection *helper.WebSocketIO, proxyTarget, protocol string, mes
 		return
 	}
 	defer serverConnection.Close()
-
-	_, err = serverConnection.Write(message)
-	if err != nil {
-		fmt.Println("Error al enviar mensaje al servidor TCP:", err)
-		sendErrorResponse(connection)
-		return
-	}
 
 	go func() {
 		for {
@@ -275,8 +269,8 @@ func handleHTTPRequest(connection *helper.WebSocketIO, serverURL string, req *ht
 	}
 }
 
-func handleHTTP(connection *helper.WebSocketIO, proxyTarget, protocol string, message []byte) {
-	req, err := helper.ParseHTTPRequest(message, connection)
+func handleHTTP(connection *helper.WebSocketIO, proxyTarget, protocol string) {
+	req, err := helper.ParseHTTPRequest(connection)
 	if err != nil {
 		fmt.Println("Error parsing HTTP request:", err)
 		sendErrorResponse(connection)
