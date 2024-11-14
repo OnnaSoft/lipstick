@@ -102,6 +102,20 @@ func (w *WebSocketIO) Read(p []byte) (int, error) {
 	return len(message), nil
 }
 
+func (w *WebSocketIO) ReadMessage() (int, []byte, error) {
+	if len(w.buff) > 0 {
+		message := w.buff
+		w.buff = nil
+		return websocket.TextMessage, message, nil
+	}
+
+	messageType, message, err := w.Conn.ReadMessage()
+	if err != nil {
+		return 0, nil, err
+	}
+	return messageType, message, nil
+}
+
 func GetResponseWriter(w http.ResponseWriter) http.ResponseWriter {
 	metaValue := reflect.ValueOf(w).Elem()
 	field := metaValue.FieldByName("ResponseWriter")
@@ -177,24 +191,19 @@ func IsHTTPRequest(data string) bool {
 	return strings.HasPrefix(version, "HTTP/")
 }
 
-func ReadHTTPRequestFromWebSocket(conn *WebSocketIO, data []byte) ([]byte, error) {
-	// Inicializar el buffer con los datos iniciales
-	buffer := bytes.NewBuffer(data)
+func ReadHTTPRequestFromWebSocket(conn *WebSocketIO) ([]byte, error) {
+	buffer := bytes.NewBuffer(nil)
 
-	// Continuar leyendo del WebSocket hasta completar el cuerpo del request
 	for {
-		// Verificar si ya tenemos el final del encabezado HTTP (\r\n\r\n)
 		if bytes.Contains(buffer.Bytes(), []byte{13, 10, 13, 10}) {
 			break
 		}
 
-		// Leer más datos desde el WebSocket
 		_, message, err := conn.ReadMessage()
 		if err != nil {
 			return nil, fmt.Errorf("error reading WebSocket message: %w", err)
 		}
 
-		// Escribir los datos leídos en el buffer
 		buffer.Write(message)
 	}
 
@@ -202,8 +211,12 @@ func ReadHTTPRequestFromWebSocket(conn *WebSocketIO, data []byte) ([]byte, error
 }
 
 func ParseHTTPRequest(conn *WebSocketIO) (*http.Request, error) {
-	reader := bufio.NewReader(conn)
+	completeData, err := ReadHTTPRequestFromWebSocket(conn)
+	if err != nil {
+		return nil, fmt.Errorf("error reading HTTP request: %w", err)
+	}
 
+	reader := bufio.NewReader(bytes.NewReader(completeData))
 	request, err := http.ReadRequest(reader)
 	if err != nil {
 		return nil, fmt.Errorf("error parsing HTTP request: %w", err)
