@@ -18,8 +18,7 @@ func configureRouter(manager *Manager) {
 	r := gin.New()
 
 	r.GET("/health", router.health)
-	r.GET("/ws", router.upgrade)
-	r.GET("/ws/:uuid", router.request)
+	r.GET("/", router.upgrade)
 
 	manager.engine = r
 }
@@ -75,30 +74,4 @@ func (r *router) upgrade(c *gin.Context) {
 		Conn:                     wsConn,
 		AllowMultipleConnections: domain.AllowMultipleConnections,
 	}
-}
-
-func (r *router) request(c *gin.Context) {
-	wsConn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
-	if err != nil {
-		log.Println("Unable to upgrade connection", err)
-		return
-	}
-
-	domainName, err := helper.GetDomainName(wsConn.NetConn())
-	if err != nil {
-		log.Println("Unable to get domain name", err)
-		wsConn.Close()
-		return
-	}
-
-	uuid, ok := c.Params.Get("uuid")
-	if !ok {
-		return
-	}
-	domain, ok := r.manager.hubs[domainName]
-	if !ok {
-		return
-	}
-
-	domain.serverRequests <- &request{uuid: uuid, conn: wsConn}
 }

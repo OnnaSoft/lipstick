@@ -195,7 +195,8 @@ func ReadHTTPRequestFromWebSocket(conn *WebSocketIO) ([]byte, error) {
 	buffer := bytes.NewBuffer(nil)
 
 	for {
-		if bytes.Contains(buffer.Bytes(), []byte{13, 10, 13, 10}) {
+		pos := bytes.Index(buffer.Bytes(), []byte{13, 10, 13, 10})
+		if pos != -1 {
 			break
 		}
 
@@ -210,13 +211,8 @@ func ReadHTTPRequestFromWebSocket(conn *WebSocketIO) ([]byte, error) {
 	return buffer.Bytes(), nil
 }
 
-func ParseHTTPRequest(conn *WebSocketIO) (*http.Request, error) {
-	completeData, err := ReadHTTPRequestFromWebSocket(conn)
-	if err != nil {
-		return nil, fmt.Errorf("error reading HTTP request: %w", err)
-	}
-
-	reader := bufio.NewReader(bytes.NewReader(completeData))
+func ParseHTTPRequest(conn net.Conn) (*http.Request, error) {
+	reader := bufio.NewReader(conn)
 	request, err := http.ReadRequest(reader)
 	if err != nil {
 		return nil, fmt.Errorf("error parsing HTTP request: %w", err)

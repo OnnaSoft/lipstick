@@ -38,6 +38,7 @@ var client = &http.Client{
 	},
 }
 var wsmanager = manager.NewWebSocketManager(5 * time.Second)
+var httpmanager = manager.NewHTTPManager()
 
 func main() {
 	defer wsmanager.CloseAllConnections()
@@ -155,23 +156,20 @@ var httpErrorResponse = httpErrorHeader + fmt.Sprint(len(httpErrorContent)) + "\
 func establishConnection(protocol, proxyTarget, uuid string) {
 	url := websocketURL + "/" + uuid
 
-	connection, err := wsmanager.Connect(url, nil)
+	connection, err := httpmanager.Connect(url, nil)
 	if err != nil {
 		log.Printf("Error al conectar al servidor WebSocket: %v\n", err)
 		return
 	}
-	defer func() {
-		closeMessage := websocket.FormatCloseMessage(websocket.CloseNormalClosure, "Cierre normal")
-		connection.WriteMessage(websocket.CloseMessage, closeMessage)
-		connection.Close()
-	}()
-	_, message, err := connection.ReadMessage()
+	defer connection.Close()
+
+	message := make([]byte, 1024)
+	_, err = connection.Read(message)
 	if err != nil && err != io.EOF {
 		log.Printf("Error al leer mensaje del servidor WebSocket: %v\n", err)
 		sendErrorResponse(connection)
 		return
 	}
-
 	isHTTP := helper.IsHTTPRequest(string(message))
 	connection.SetBuffer(message)
 
@@ -189,7 +187,7 @@ func establishConnection(protocol, proxyTarget, uuid string) {
 	handleTCP(connection, proxyTarget, protocol)
 }
 
-func handleTCP(connection *helper.WebSocketIO, proxyTarget, protocol string) {
+func handleTCP(connection net.Conn, proxyTarget, protocol string) {
 	var err error
 	var serverConnection net.Conn
 	if protocol == "tcp" || protocol == "http" {
@@ -213,7 +211,7 @@ func handleTCP(connection *helper.WebSocketIO, proxyTarget, protocol string) {
 			if err != nil {
 				break
 			}
-			err = connection.WriteMessage(websocket.BinaryMessage, buffer[:n])
+			_, err = connection.Write(buffer[:n])
 			if err != nil {
 				break
 			}
@@ -224,7 +222,7 @@ func handleTCP(connection *helper.WebSocketIO, proxyTarget, protocol string) {
 }
 
 // sendHTTPResponse sends an HTTP response back over the WebSocket connection.
-func sendHTTPResponse(connection *helper.WebSocketIO, resp *http.Response) error {
+func sendHTTPResponse(connection net.Conn, resp *http.Response) error {
 	headers := ""
 	for key, values := range resp.Header {
 		for _, value := range values {
@@ -232,7 +230,7 @@ func sendHTTPResponse(connection *helper.WebSocketIO, resp *http.Response) error
 		}
 	}
 	responseHeader := fmt.Sprintf("HTTP/1.1 %d %s\r\n%s\r\n", resp.StatusCode, resp.Status, headers)
-	if err := connection.WriteMessage(websocket.TextMessage, []byte(responseHeader)); err != nil {
+	if _, err := fmt.Fprint(connection, responseHeader); err != nil {
 		fmt.Println("Error sending HTTP response header:", err)
 		return err
 	}
@@ -241,12 +239,12 @@ func sendHTTPResponse(connection *helper.WebSocketIO, resp *http.Response) error
 	return err
 }
 
-func sendErrorResponse(connection *helper.WebSocketIO) {
-	connection.WriteMessage(websocket.TextMessage, []byte(httpErrorResponse))
+func sendErrorResponse(connection net.Conn) {
+	connection.Write([]byte(httpErrorResponse))
 }
 
 // handleHTTPRequest forwards HTTP requests using Go's http.Client.
-func handleHTTPRequest(connection *helper.WebSocketIO, serverURL string, req *http.Request, host string) {
+func handleHTTPRequest(connection net.Conn, serverURL string, req *http.Request, host string) {
 
 	// Prepare the request for the target server
 	req.URL, _ = url.Parse(serverURL)
@@ -269,7 +267,7 @@ func handleHTTPRequest(connection *helper.WebSocketIO, serverURL string, req *ht
 	}
 }
 
-func handleHTTP(connection *helper.WebSocketIO, proxyTarget, protocol string) {
+func handleHTTP(connection net.Conn, proxyTarget, protocol string) {
 	req, err := helper.ParseHTTPRequest(connection)
 	if err != nil {
 		fmt.Println("Error parsing HTTP request:", err)
@@ -306,7 +304,7 @@ func handleHTTP(connection *helper.WebSocketIO, proxyTarget, protocol string) {
 	handleWebSocket(connection, proxyTarget, protocol, requestToServer)
 }
 
-func handleWebSocket(connection *helper.WebSocketIO, proxyTarget, protocol string, requestToServer *http.Request) {
+func handleWebSocket(connection net.Conn, proxyTarget, protocol string, requestToServer *http.Request) {
 	var serverConnection net.Conn
 	var err error
 

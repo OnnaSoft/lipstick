@@ -2,6 +2,7 @@ package manager
 
 import (
 	"fmt"
+	"io"
 	"net"
 	"sync"
 	"time"
@@ -48,51 +49,17 @@ func NewNetworkHub(name string, unregister chan string, trafficManager *traffic.
 	}
 }
 
-func (hub *NetworkHub) syncConnections(pipe net.Conn, destination *websocket.Conn) {
+func (hub *NetworkHub) syncConnections(pipe net.Conn, destination net.Conn) {
 	defer pipe.Close()
 	defer destination.Close()
 
 	go func() {
-		defer pipe.Close()
-		defer destination.Close()
-
-		for {
-			messageType, message, err := destination.ReadMessage()
-			if err != nil {
-				if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
-					return
-				}
-				return
-			}
-
-			if messageType == websocket.TextMessage || messageType == websocket.BinaryMessage {
-				_, writeErr := pipe.Write(message)
-				if writeErr != nil {
-					return
-				}
-				hub.addDataUsage(int64(len(message)))
-			} else if messageType == websocket.CloseMessage {
-				return
-			}
-		}
+		written, _ := io.Copy(destination, pipe)
+		hub.addDataUsage(written)
 	}()
 
-	for {
-		buffer := make([]byte, 1024)
-		n, err := pipe.Read(buffer)
-		if err != nil {
-			closeMessage := websocket.FormatCloseMessage(websocket.CloseNormalClosure, "")
-			if writeErr := destination.WriteMessage(websocket.CloseMessage, closeMessage); writeErr != nil {
-				return
-			}
-			return
-		}
-		err = destination.WriteMessage(websocket.BinaryMessage, buffer[:n])
-		if err != nil {
-			return
-		}
-		hub.addDataUsage(int64(n))
-	}
+	written, _ := io.Copy(pipe, destination)
+	hub.addDataUsage(written)
 }
 
 func (hub *NetworkHub) addDataUsage(bytes int64) {
@@ -133,15 +100,15 @@ func (hub *NetworkHub) listen() {
 			}
 		case request := <-hub.serverRequests:
 			destination := request.conn
-			pipe, exists := hub.clientConnections[request.uuid]
+			pipe, exists := hub.clientConnections[request.ticket]
 			if !exists {
 				func() {
-					destination.WriteMessage(websocket.TextMessage, []byte(badGatewayResponse))
+					fmt.Fprint(destination, badGatewayResponse)
 					destination.Close()
 				}()
 				continue
 			}
-			delete(hub.clientConnections, request.uuid)
+			delete(hub.clientConnections, request.ticket)
 			go hub.syncConnections(pipe, destination)
 		case remoteConn := <-hub.incomingClientConn:
 			if len(hub.webSocketConnections) == 0 {

@@ -1,12 +1,15 @@
 package manager
 
 import (
+	"crypto/tls"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
+	"github.com/juliotorresmoreno/lipstick/helper"
 	"github.com/juliotorresmoreno/lipstick/server/auth"
 	"github.com/juliotorresmoreno/lipstick/server/common"
 	"github.com/juliotorresmoreno/lipstick/server/proxy"
@@ -20,8 +23,8 @@ var upgrader = websocket.Upgrader{
 }
 
 type request struct {
-	conn *websocket.Conn
-	uuid string
+	conn   net.Conn
+	ticket string
 }
 
 var badGatewayHeader = `HTTP/1.1 502 Bad Gateway
@@ -82,6 +85,21 @@ func SetupManager(proxy *proxy.Proxy, addr string, cert string, key string) *Man
 	return manager
 }
 
+func (manager *Manager) handleTunnel(conn net.Conn, ticket string) {
+	domainName, err := helper.GetDomainName(conn)
+	if err != nil {
+		log.Println("Unable to get domain name", err)
+		return
+	}
+
+	domain, ok := manager.hubs[domainName]
+	if !ok {
+		return
+	}
+
+	domain.serverRequests <- &request{ticket: ticket, conn: conn}
+}
+
 func (manager *Manager) Listen() {
 	log.Println("Listening manager on", manager.addr)
 
@@ -91,15 +109,26 @@ func (manager *Manager) Listen() {
 	done := make(chan struct{})
 	go manager.manage(done)
 	go manager.proxy.Listen(manager.remoteConn)
-
-	if manager.cert != "" && manager.key != "" {
-		err = manager.engine.RunTLS(manager.addr, manager.cert, manager.key)
-	} else {
-		err = manager.engine.Run(manager.addr)
+	cert := tls.Certificate{
+		Certificate: [][]byte{[]byte(manager.cert)},
+		PrivateKey:  []byte(manager.key),
 	}
 
+	var listener net.Listener
+	if manager.cert != "" && manager.key != "" {
+		listener, err = tls.Listen("tcp", manager.addr, &tls.Config{
+			MinVersion:   tls.VersionTLS12,
+			Certificates: []tls.Certificate{cert},
+		})
+	} else {
+		listener, err = net.Listen("tcp", manager.addr)
+	}
 	if err != nil {
 		log.Println("Error on listen", err)
+	} else {
+		l := NewCustomListener(listener)
+		l.manager = manager
+		manager.engine.RunListener(l)
 	}
 
 	done <- struct{}{}
