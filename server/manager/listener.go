@@ -2,9 +2,10 @@ package manager
 
 import (
 	"bufio"
+	"bytes"
 	"errors"
+	"fmt"
 	"net"
-	"net/http"
 	"strings"
 )
 
@@ -66,7 +67,7 @@ func (cl *CustomListener) accept() {
 
 		if strings.HasPrefix(url, "/") && len(url) > 1 && strings.Count(url, "/") == 1 {
 			ticket := url[1:]
-			_, err := http.ReadRequest(bufio.NewReader(&CustomConn{Conn: conn, buff: b[:n]}))
+			err := readUntilHeadersEnd(&CustomConn{Conn: conn, buff: b[:n]})
 			if err != nil {
 				cl.conn <- CustomerAccepter{nil, err}
 				continue
@@ -78,6 +79,23 @@ func (cl *CustomListener) accept() {
 		conn.Close()
 		cl.conn <- CustomerAccepter{nil, errors.New("invalid request")}
 	}
+}
+
+func readUntilHeadersEnd(conn net.Conn) error {
+	reader := bufio.NewReader(conn)
+	var buffer bytes.Buffer
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			return fmt.Errorf("error reading from connection: %w", err)
+		}
+		buffer.WriteString(line)
+		if buffer.String() == "\r\n" || bytes.HasSuffix(buffer.Bytes(), []byte("\r\n\r\n")) {
+			break
+		}
+	}
+
+	return nil
 }
 
 type CustomConn struct {
