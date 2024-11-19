@@ -116,12 +116,10 @@ func (hub *NetworkHub) listen() {
 				remoteConn.Close()
 				continue
 			}
-
 			conns := make([]*WebSocketWrapper, 0, len(hub.webSocketConnections))
 			for key := range hub.webSocketConnections {
 				conns = append(conns, key)
 			}
-
 			var ws *WebSocketWrapper
 			if len(conns) == 1 {
 				ws = conns[0]
