@@ -44,6 +44,39 @@ func (cl *CustomListener) Close() error {
 	return cl.Listener.Close()
 }
 
+var newLine = []byte("\n")
+var space = []byte(" ")
+
+func (cl *CustomListener) handle(conn net.Conn) {
+	b := make([]byte, 1024)
+	n, err := conn.Read(b)
+	if err != nil {
+		cl.conn <- CustomerAccepter{nil, err}
+		return
+	}
+	line := bytes.Split(b[:n], newLine)[0]
+	url := string(bytes.Split(line, space)[1])
+
+	if url == "/" {
+		cl.conn <- CustomerAccepter{&CustomConn{Conn: conn, buff: b[:n]}, nil}
+		return
+	}
+
+	if url[0] == '/' && len(url) > 1 && strings.Count(url, "/") == 1 {
+		ticket := url[1:]
+		err := readUntilHeadersEnd(&CustomConn{Conn: conn, buff: b[:n]})
+		if err != nil {
+			cl.conn <- CustomerAccepter{nil, err}
+			return
+		}
+		cl.manager.handleTunnel(conn, ticket)
+		return
+	}
+
+	conn.Close()
+	cl.conn <- CustomerAccepter{nil, errors.New("invalid request")}
+}
+
 func (cl *CustomListener) accept() {
 	for {
 		conn, err := cl.Listener.Accept()
@@ -51,33 +84,7 @@ func (cl *CustomListener) accept() {
 			cl.conn <- CustomerAccepter{nil, err}
 			continue
 		}
-		b := make([]byte, 1024)
-		n, err := conn.Read(b)
-		if err != nil {
-			cl.conn <- CustomerAccepter{nil, err}
-			continue
-		}
-		line := strings.Split(string(b[:n]), "\n")[0]
-		url := strings.Split(line, " ")[1]
-
-		if url == "/" {
-			cl.conn <- CustomerAccepter{&CustomConn{Conn: conn, buff: b[:n]}, nil}
-			continue
-		}
-
-		if strings.HasPrefix(url, "/") && len(url) > 1 && strings.Count(url, "/") == 1 {
-			ticket := url[1:]
-			err := readUntilHeadersEnd(&CustomConn{Conn: conn, buff: b[:n]})
-			if err != nil {
-				cl.conn <- CustomerAccepter{nil, err}
-				continue
-			}
-			go cl.manager.handleTunnel(conn, ticket)
-			continue
-		}
-
-		conn.Close()
-		cl.conn <- CustomerAccepter{nil, errors.New("invalid request")}
+		go cl.handle(conn)
 	}
 }
 
