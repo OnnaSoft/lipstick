@@ -7,7 +7,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/juliotorresmoreno/lipstick/server/common"
 	"github.com/juliotorresmoreno/lipstick/server/traffic"
@@ -29,6 +28,7 @@ type NetworkHub struct {
 	threshold            int64      // Threshold for reporting traffic
 	mu                   sync.Mutex // Mutex to protect dataUsageAccumulator
 	totalDataTransferred int64
+	tickerManager        *TickerManager
 	shutdownSignal       chan struct{}
 }
 
@@ -45,6 +45,7 @@ func NewNetworkHub(name string, unregister chan string, trafficManager *traffic.
 		clientUnregister:     unregister,
 		dataUsageAccumulator: 0,
 		threshold:            threshold,
+		tickerManager:        &TickerManager{},
 		shutdownSignal:       make(chan struct{}),
 	}
 }
@@ -126,7 +127,7 @@ func (hub *NetworkHub) listen() {
 			} else {
 				ws = conns[int(rng.Next()%uint32(len(conns)))]
 			}
-			ticket := uuid.NewString()
+			ticket := hub.tickerManager.generate()
 			hub.clientConnections[ticket] = remoteConn
 			err := ws.WriteMessage(websocket.TextMessage, []byte(ticket))
 			if err != nil {
