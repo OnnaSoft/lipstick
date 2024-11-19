@@ -126,8 +126,7 @@ func (manager *Manager) Listen() {
 	if err != nil {
 		log.Println("Error on listen", err)
 	} else {
-		l := NewCustomListener(listener)
-		l.manager = manager
+		l := NewCustomListener(listener, manager)
 		manager.engine.RunListener(l)
 	}
 

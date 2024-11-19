@@ -21,17 +21,21 @@ type CustomListener struct {
 	manager *Manager
 }
 
-func NewCustomListener(l net.Listener) *CustomListener {
+func NewCustomListener(l net.Listener, manager *Manager) *CustomListener {
 	cl := &CustomListener{
 		Listener: l,
 		conn:     make(chan CustomerAccepter),
+		manager:  manager,
 	}
-	go cl.accept()
+	go cl.acceptConnections()
 	return cl
 }
 
 func (cl *CustomListener) Accept() (net.Conn, error) {
-	ca := <-cl.conn
+	ca, ok := <-cl.conn
+	if !ok {
+		return nil, errors.New("listener closed")
+	}
 	return ca.conn, ca.err
 }
 
@@ -44,27 +48,28 @@ func (cl *CustomListener) Close() error {
 	return cl.Listener.Close()
 }
 
-var newLine = []byte("\n")
-var space = []byte(" ")
-
 func (cl *CustomListener) handle(conn net.Conn) {
-	b := make([]byte, 1024)
-	n, err := conn.Read(b)
+	buffer := make([]byte, 1024)
+	n, err := conn.Read(buffer)
 	if err != nil {
 		cl.conn <- CustomerAccepter{nil, err}
 		return
 	}
-	line := bytes.Split(b[:n], newLine)[0]
-	url := string(bytes.Split(line, space)[1])
 
-	if url == "/" {
-		cl.conn <- CustomerAccepter{&CustomConn{Conn: conn, buff: b[:n]}, nil}
+	requestLine, url, valid := parseRequest(buffer[:n])
+	if !valid {
+		cl.conn <- CustomerAccepter{nil, errors.New("invalid request")}
 		return
 	}
 
-	if url[0] == '/' && len(url) > 1 && strings.Count(url, "/") == 1 {
+	if url == "/" {
+		cl.conn <- CustomerAccepter{&CustomConn{Conn: conn, buff: buffer[:n]}, nil}
+		return
+	}
+
+	if strings.HasPrefix(url, "/") && len(url) > 1 && strings.Count(url, "/") == 1 {
 		ticket := url[1:]
-		err := readUntilHeadersEnd(&CustomConn{Conn: conn, buff: b[:n]})
+		err := readUntilHeadersEnd(&CustomConn{Conn: conn, buff: buffer[:n]})
 		if err != nil {
 			cl.conn <- CustomerAccepter{nil, err}
 			return
@@ -74,13 +79,16 @@ func (cl *CustomListener) handle(conn net.Conn) {
 	}
 
 	conn.Close()
-	cl.conn <- CustomerAccepter{nil, errors.New("invalid request")}
+	cl.conn <- CustomerAccepter{nil, errors.New("invalid request: " + requestLine)}
 }
 
-func (cl *CustomListener) accept() {
+func (cl *CustomListener) acceptConnections() {
 	for {
 		conn, err := cl.Listener.Accept()
 		if err != nil {
+			if cl.closed {
+				return
+			}
 			cl.conn <- CustomerAccepter{nil, err}
 			continue
 		}
@@ -90,19 +98,29 @@ func (cl *CustomListener) accept() {
 
 func readUntilHeadersEnd(conn net.Conn) error {
 	reader := bufio.NewReader(conn)
-	var buffer bytes.Buffer
 	for {
 		line, err := reader.ReadString('\n')
 		if err != nil {
-			return fmt.Errorf("error reading from connection: %w", err)
+			return fmt.Errorf("error reading headers: %w", err)
 		}
-		buffer.WriteString(line)
-		if buffer.String() == "\r\n" || bytes.HasSuffix(buffer.Bytes(), []byte("\r\n\r\n")) {
+		if line == "\r\n" {
 			break
 		}
 	}
-
 	return nil
+}
+
+func parseRequest(buffer []byte) (requestLine, url string, valid bool) {
+	lines := bytes.Split(buffer, []byte("\n"))
+	if len(lines) == 0 {
+		return "", "", false
+	}
+	requestLine = string(lines[0])
+	parts := strings.Fields(requestLine)
+	if len(parts) < 2 {
+		return requestLine, "", false
+	}
+	return requestLine, parts[1], true
 }
 
 type CustomConn struct {
@@ -111,10 +129,10 @@ type CustomConn struct {
 }
 
 func (cc *CustomConn) Read(b []byte) (n int, err error) {
-	if len(cc.buff) == 0 {
-		return cc.Conn.Read(b)
+	if len(cc.buff) > 0 {
+		n = copy(b, cc.buff)
+		cc.buff = cc.buff[n:]
+		return n, nil
 	}
-	n = copy(b, cc.buff)
-	cc.buff = cc.buff[n:]
-	return n, nil
+	return cc.Conn.Read(b)
 }
