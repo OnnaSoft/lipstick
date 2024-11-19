@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"crypto/tls"
 	"fmt"
 	"io"
@@ -24,14 +25,14 @@ var configuration, _ = config.GetConfig()
 var websocketURL = configuration.ServerURL
 var client = &http.Client{
 	Transport: &http.Transport{
-		MaxIdleConns:        1000,             // Máximo de conexiones ociosas
-		IdleConnTimeout:     90 * time.Second, // Tiempo máximo de inactividad
-		DisableKeepAlives:   false,            // Keep-Alive habilitado
-		MaxIdleConnsPerHost: 100,              // Conexiones ociosas permitidas por host
+		MaxIdleConns:        1000,
+		IdleConnTimeout:     90 * time.Second,
+		DisableKeepAlives:   false,
+		MaxIdleConnsPerHost: 100,
 		TLSClientConfig:     &tls.Config{InsecureSkipVerify: true},
 		Dial: (&net.Dialer{
-			Timeout:   30 * time.Second, // Tiempo de espera para establecer la conexión
-			KeepAlive: 30 * time.Second, // Tiempo de espera para mantener la conexión
+			Timeout:   30 * time.Second,
+			KeepAlive: 30 * time.Second,
 		}).Dial,
 		WriteBufferSize: 1024,
 		ReadBufferSize:  1024,
@@ -125,7 +126,6 @@ func handleWebSocketMessages(connection *helper.WebSocketIO, proxyTarget string)
 	for {
 		_, ticket, err := connection.ReadMessage()
 		if err != nil {
-			fmt.Println("Error al leer mensaje del servidor WebSocket:", err)
 			break
 		}
 
@@ -158,20 +158,17 @@ func establishConnection(protocol, proxyTarget, uuid string) {
 
 	connection, err := httpmanager.Connect(url, nil)
 	if err != nil {
-		log.Printf("Error al conectar al servidor WebSocket: %v\n", err)
 		return
 	}
 	defer connection.Close()
 
-	message := make([]byte, 1024)
-	_, err = connection.Read(message)
+	message, err := bufio.NewReader(connection).ReadString('\n')
 	if err != nil && err != io.EOF {
-		log.Printf("Error al leer mensaje del servidor WebSocket: %v\n", err)
 		sendErrorResponse(connection)
 		return
 	}
-	isHTTP := helper.IsHTTPRequest(string(message))
-	connection.SetBuffer(message)
+	isHTTP := helper.IsHTTPRequest(message)
+	connection.SetBuffer([]byte(message + "\n"))
 
 	if isHTTP {
 		handleHTTP(connection, proxyTarget, protocol)
@@ -179,7 +176,6 @@ func establishConnection(protocol, proxyTarget, uuid string) {
 	}
 
 	if protocol == "http" || protocol == "https" {
-		fmt.Println("Protocolo HTTP no compatible con el mensaje WebSocket")
 		sendErrorResponse(connection)
 		return
 	}
