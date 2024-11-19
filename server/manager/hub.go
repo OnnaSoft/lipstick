@@ -24,9 +24,9 @@ type NetworkHub struct {
 	serverRequests       chan *request
 	trafficManager       *traffic.TrafficManager
 	clientUnregister     chan string
-	dataUsageAccumulator int64      // Local traffic accumulator
-	threshold            int64      // Threshold for reporting traffic
-	mu                   sync.Mutex // Mutex to protect dataUsageAccumulator
+	dataUsageAccumulator int64
+	threshold            int64
+	mu                   sync.Mutex
 	totalDataTransferred int64
 	tickerManager        *TickerManager
 	shutdownSignal       chan struct{}
