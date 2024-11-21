@@ -79,7 +79,7 @@ func (hub *NetworkHub) listen() {
 	for {
 		select {
 		case conn := <-hub.registerProxyNotificationConn:
-			if len(hub.ProxyNotificationConns) > 0 {
+			if !conn.AllowMultipleConnections && len(hub.ProxyNotificationConns) > 0 {
 				conn.Close()
 				continue
 			}
