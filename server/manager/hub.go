@@ -9,6 +9,7 @@ import (
 
 	"github.com/OnnaSoft/lipstick/helper"
 	"github.com/OnnaSoft/lipstick/server/traffic"
+	"github.com/gorilla/websocket"
 )
 
 var rng = helper.NewXORShift(uint32(time.Now().UnixNano()))
@@ -22,7 +23,6 @@ type NetworkHub struct {
 	incomingClientConn              chan *helper.RemoteConn
 	serverRequests                  chan *request
 	trafficManager                  *traffic.TrafficManager
-	clientUnregister                chan string
 	dataUsageAccumulator            int64
 	threshold                       int64
 	mu                              sync.Mutex
@@ -31,7 +31,7 @@ type NetworkHub struct {
 	shutdownSignal                  chan struct{}
 }
 
-func NewNetworkHub(name string, unregister chan string, trafficManager *traffic.TrafficManager, threshold int64) *NetworkHub {
+func NewNetworkHub(name string, trafficManager *traffic.TrafficManager, threshold int64) *NetworkHub {
 	return &NetworkHub{
 		HubName:                         name,
 		incomingClientConns:             make(map[string]net.Conn),
@@ -41,7 +41,6 @@ func NewNetworkHub(name string, unregister chan string, trafficManager *traffic.
 		incomingClientConn:              make(chan *helper.RemoteConn),
 		serverRequests:                  make(chan *request),
 		trafficManager:                  trafficManager,
-		clientUnregister:                unregister,
 		dataUsageAccumulator:            0,
 		threshold:                       threshold,
 		tickerManager:                   &TickerManager{},
@@ -88,6 +87,7 @@ func (hub *NetworkHub) listen() {
 				hub.ProxyNotificationConns = make(map[*ProxyNotificationConn]bool)
 			}
 			hub.ProxyNotificationConns[conn] = true
+			go checkConnection(conn)
 		case ws := <-hub.unregisterProxyNotificationConn:
 			ws.Close()
 			connections := hub.ProxyNotificationConns
@@ -124,7 +124,7 @@ func (hub *NetworkHub) listen() {
 			}
 			ticket := hub.tickerManager.generate()
 			hub.incomingClientConns[ticket] = remoteConn
-			_, err := ws.WriteTicket(ticket)
+			err := ws.WriteMessage(websocket.TextMessage, []byte(ticket))
 			if err != nil {
 				fmt.Fprint(remoteConn, helper.BadGatewayResponse)
 				remoteConn.Close()
@@ -139,5 +139,15 @@ func (hub *NetworkHub) listen() {
 			shutdownComplete <- struct{}{}
 			return
 		}
+	}
+}
+
+func checkConnection(connection *ProxyNotificationConn) {
+	for {
+		_, _, err := connection.ReadMessage()
+		if err != nil {
+			break
+		}
+		time.Sleep(30 * time.Second)
 	}
 }

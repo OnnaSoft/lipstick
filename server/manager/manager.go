@@ -12,6 +12,7 @@ import (
 	"github.com/OnnaSoft/lipstick/server/config"
 	"github.com/OnnaSoft/lipstick/server/traffic"
 	"github.com/gin-gonic/gin"
+	"github.com/gorilla/websocket"
 )
 
 type request struct {
@@ -22,31 +23,25 @@ type request struct {
 type ProxyNotificationConn struct {
 	Domain                   string
 	AllowMultipleConnections bool
-	*HttpReadWriter
+	*websocket.Conn
 }
 
 type Manager struct {
-	engine                          *gin.Engine
-	hubs                            sync.Map
-	incomingClientConn              chan *helper.RemoteConn
-	registerProxyNotificationConn   chan *ProxyNotificationConn
-	unregisterProxyNotificationConn chan string
-	trafficManager                  *traffic.TrafficManager
-	authManager                     auth.AuthManager
-	tlsConfig                       *tls.Config
+	engine         *gin.Engine
+	hubs           sync.Map
+	trafficManager *traffic.TrafficManager
+	authManager    auth.AuthManager
+	tlsConfig      *tls.Config
 }
 
 func SetupManager(tlsConfig *tls.Config) *Manager {
 	gin.SetMode(gin.ReleaseMode)
 
 	manager := &Manager{
-		hubs:                            sync.Map{},
-		incomingClientConn:              make(chan *helper.RemoteConn),
-		registerProxyNotificationConn:   make(chan *ProxyNotificationConn),
-		unregisterProxyNotificationConn: make(chan string),
-		authManager:                     auth.MakeAuthManager(),
-		trafficManager:                  traffic.NewTrafficManager(64 * 1024),
-		tlsConfig:                       tlsConfig,
+		hubs:           sync.Map{},
+		authManager:    auth.MakeAuthManager(),
+		trafficManager: traffic.NewTrafficManager(64 * 1024),
+		tlsConfig:      tlsConfig,
 	}
 
 	configureRouter(manager)
@@ -116,10 +111,6 @@ func (manager *Manager) HandleTCPConn(conn net.Conn) {
 		conn.Close()
 		return
 	}
-	if _, ok := conn.(helper.RemoteConn); ok {
-		manager.incomingClientConn <- conn.(*helper.RemoteConn)
-		return
-	}
 	hub, ok := manager.GetHub(domain)
 	if !ok {
 		fmt.Println("Domain not found")
@@ -127,5 +118,11 @@ func (manager *Manager) HandleTCPConn(conn net.Conn) {
 		conn.Close()
 		return
 	}
+
+	if _, ok := conn.(helper.RemoteConn); ok {
+		hub.incomingClientConn <- conn.(*helper.RemoteConn)
+		return
+	}
+
 	hub.incomingClientConn <- &helper.RemoteConn{Conn: conn, Domain: domain}
 }

@@ -1,9 +1,7 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"os"
@@ -14,6 +12,7 @@ import (
 	"github.com/OnnaSoft/lipstick/client/handlers"
 	"github.com/OnnaSoft/lipstick/client/manager"
 	"github.com/OnnaSoft/lipstick/helper"
+	"github.com/gorilla/websocket"
 )
 
 var httpmanager = manager.NewHTTPManager()
@@ -41,34 +40,37 @@ func startClient(proxyTarget string) {
 	headers.Set("authorization", configuration.APISecret)
 
 	for {
-		req, err := http.NewRequest("GET", serverURL, nil)
+		conn, _, err := websocket.DefaultDialer.Dial(serverURL, headers)
 		if err != nil {
-			log.Println("Error creating request to server:", err)
-			time.Sleep(retryDelay)
-			continue
-		}
-		req.Header = headers
-		resp, err := http.DefaultClient.Do(req)
-		if err != nil {
+			log.Printf("Error creating WebSocket connection: %v\n", serverURL)
 			time.Sleep(retryDelay)
 			continue
 		}
 
 		fmt.Println("Connected to server at", serverURL)
-		handleTickets(resp.Body, proxyTarget)
+		handleTickets(conn, proxyTarget)
 		time.Sleep(retryDelay)
 	}
 }
 
-func handleTickets(connection io.ReadCloser, proxyTarget string) {
+func checkConnection(connection *websocket.Conn) {
+	for {
+		err := connection.WriteMessage(websocket.PingMessage, nil)
+		if err != nil {
+			break
+		}
+		time.Sleep(30 * time.Second)
+	}
+}
+
+func handleTickets(connection *websocket.Conn, proxyTarget string) {
 	defer func() {
 		recover()
 	}()
 	defer connection.Close()
 
-	reader := bufio.NewReader(connection)
 	for {
-		ticket, _, err := reader.ReadLine()
+		_, ticket, err := connection.ReadMessage()
 		if err != nil {
 			break
 		}

@@ -7,7 +7,14 @@ import (
 
 	"github.com/OnnaSoft/lipstick/helper"
 	"github.com/gin-gonic/gin"
+	"github.com/gorilla/websocket"
 )
+
+var upgrader = websocket.Upgrader{
+	CheckOrigin: func(r *http.Request) bool {
+		return true
+	},
+}
 
 type router struct {
 	manager *Manager
@@ -18,7 +25,7 @@ func configureRouter(manager *Manager) {
 	r := gin.New()
 
 	r.GET("/health", router.health)
-	r.GET("/", router.strem)
+	r.GET("/", router.upgrade)
 
 	manager.engine = r
 }
@@ -48,41 +55,32 @@ func (r *router) health(c *gin.Context) {
 	})
 }
 
-func (r *router) strem(c *gin.Context) {
-	rw, err := NewHttpReadWriter(c.Writer)
+func (r *router) upgrade(c *gin.Context) {
+	wsConn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
-		log.Println("Unable to hijack connection", err)
-		c.Status(http.StatusInternalServerError)
+		log.Println("Unable to upgrade connection", err)
 		return
 	}
 
-	domainName, err := helper.GetDomainName(rw.conn)
+	domainName, err := helper.GetDomainName(wsConn.NetConn())
 	if err != nil {
 		log.Println("Unable to get domain name", err)
-		rw.Close()
+		wsConn.Close()
 		return
 	}
 
 	domain, err := r.manager.authManager.GetDomain(domainName)
 	if err != nil {
 		log.Println("Unable to get domain", err)
-		rw.Close()
+		wsConn.Close()
 		return
 	}
-
-	rw.WriteString("HTTP/1.1 200 OK\r\n")
-	rw.WriteString("Content-Type: text/plain\r\n")
-	rw.WriteString("Connection: keep-alive\r\n")
-	rw.WriteString("Transfer-Encoding: chunked\r\n")
-	rw.WriteString("\r\n")
-	rw.Flush()
 
 	var hub *NetworkHub
 	hub, ok := r.manager.GetHub(domain.Name)
 	if !ok {
 		hub = NewNetworkHub(
 			domain.Name,
-			r.manager.unregisterProxyNotificationConn,
 			r.manager.trafficManager,
 			64*1024,
 		)
@@ -92,7 +90,7 @@ func (r *router) strem(c *gin.Context) {
 
 	notification := &ProxyNotificationConn{
 		Domain:                   domain.Name,
-		HttpReadWriter:           rw,
+		Conn:                     wsConn,
 		AllowMultipleConnections: domain.AllowMultipleConnections,
 	}
 	hub.registerProxyNotificationConn <- notification
