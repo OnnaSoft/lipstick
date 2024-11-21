@@ -9,11 +9,11 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 
+	"github.com/juliotorresmoreno/lipstick/helper"
 	"github.com/juliotorresmoreno/lipstick/server/admin"
 	"github.com/juliotorresmoreno/lipstick/server/config"
 	"github.com/juliotorresmoreno/lipstick/server/db"
 	"github.com/juliotorresmoreno/lipstick/server/manager"
-	"github.com/juliotorresmoreno/lipstick/server/proxy"
 )
 
 func main() {
@@ -33,18 +33,22 @@ func main() {
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt)
 
-	proxyAddr := conf.Proxy.Address
-	managerAddr := conf.Manager.Address
-
 	db.Migrate()
 
-	proxy := proxy.SetupProxy(proxyAddr, conf.TLS.CertificatePath, conf.TLS.KeyPath)
-	manager := manager.SetupManager(proxy, managerAddr, conf.TLS.CertificatePath, conf.TLS.KeyPath)
+	tlsConfig := conf.TLS.GetTLSConfig()
+
+	proxy := helper.NewListenerManagerTCP(conf.Proxy.Address, tlsConfig)
+	manager := manager.SetupManager(tlsConfig)
 	admin := admin.SetupAdmin(conf.Admin.Address)
+
+	proxy.OnListen(func() { log.Println("Listening login on", conf.Proxy.Address) })
+	proxy.OnClose(func() { log.Println("Proxy closed") })
+	proxy.OnTCPConn(manager.HandleTCPConn)
+	proxy.OnHTTPConn(manager.HandleHTTPConn)
 
 	go manager.Listen()
 	go admin.Listen()
-
+	go proxy.ListenAndServe()
 	<-interrupt
 	fmt.Println("Desconectando...")
 }

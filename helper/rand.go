@@ -1,4 +1,4 @@
-package common
+package helper
 
 // XORShift es una estructura que contiene el estado del generador.
 type XORShift struct {

@@ -18,7 +18,7 @@ func configureRouter(manager *Manager) {
 	r := gin.New()
 
 	r.GET("/health", router.health)
-	r.GET("/", router.upgrade)
+	r.GET("/", router.strem)
 
 	manager.engine = r
 }
@@ -48,30 +48,38 @@ func (r *router) health(c *gin.Context) {
 	})
 }
 
-func (r *router) upgrade(c *gin.Context) {
-	wsConn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
+func (r *router) strem(c *gin.Context) {
+	rw, err := NewHttpReadWriter(c.Writer)
 	if err != nil {
-		log.Println("Unable to upgrade connection", err)
+		log.Println("Unable to hijack connection", err)
+		c.Status(http.StatusInternalServerError)
 		return
 	}
 
-	domainName, err := helper.GetDomainName(wsConn.NetConn())
+	domainName, err := helper.GetDomainName(rw.conn)
 	if err != nil {
 		log.Println("Unable to get domain name", err)
-		wsConn.Close()
+		rw.Close()
 		return
 	}
 
 	domain, err := r.manager.authManager.GetDomain(domainName)
 	if err != nil {
 		log.Println("Unable to get domain", err)
-		wsConn.Close()
+		rw.Close()
 		return
 	}
 
-	r.manager.registerDomain <- &websocketConn{
+	rw.WriteString("HTTP/1.1 200 OK\r\n")
+	rw.WriteString("Content-Type: text/plain\r\n")
+	rw.WriteString("Connection: keep-alive\r\n")
+	rw.WriteString("Transfer-Encoding: chunked\r\n")
+	rw.WriteString("\r\n")
+	rw.Flush()
+
+	r.manager.registerProxyNotificationConn <- &ProxyNotificationConn{
 		Domain:                   domain.Name,
-		Conn:                     wsConn,
+		HttpReadWriter:           rw,
 		AllowMultipleConnections: domain.AllowMultipleConnections,
 	}
 }

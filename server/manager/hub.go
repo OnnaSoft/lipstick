@@ -7,46 +7,45 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gorilla/websocket"
-	"github.com/juliotorresmoreno/lipstick/server/common"
+	"github.com/juliotorresmoreno/lipstick/helper"
 	"github.com/juliotorresmoreno/lipstick/server/traffic"
 )
 
-var rng = common.NewXORShift(uint32(time.Now().UnixNano()))
+var rng = helper.NewXORShift(uint32(time.Now().UnixNano()))
 
 type NetworkHub struct {
-	HubName              string
-	clientConnections    map[string]net.Conn
-	webSocketConnections map[*WebSocketWrapper]bool
-	registerWebSocket    chan *websocketConn
-	unregisterWebSocket  chan *WebSocketWrapper
-	incomingClientConn   chan *common.RemoteConn
-	serverRequests       chan *request
-	trafficManager       *traffic.TrafficManager
-	clientUnregister     chan string
-	dataUsageAccumulator int64
-	threshold            int64
-	mu                   sync.Mutex
-	totalDataTransferred int64
-	tickerManager        *TickerManager
-	shutdownSignal       chan struct{}
+	HubName                         string
+	incomingClientConns             map[string]net.Conn
+	ProxyNotificationConns          map[*ProxyNotificationConn]bool
+	registerProxyNotificationConn   chan *ProxyNotificationConn
+	unregisterProxyNotificationConn chan *ProxyNotificationConn
+	incomingClientConn              chan *helper.RemoteConn
+	serverRequests                  chan *request
+	trafficManager                  *traffic.TrafficManager
+	clientUnregister                chan string
+	dataUsageAccumulator            int64
+	threshold                       int64
+	mu                              sync.Mutex
+	totalDataTransferred            int64
+	tickerManager                   *TickerManager
+	shutdownSignal                  chan struct{}
 }
 
 func NewNetworkHub(name string, unregister chan string, trafficManager *traffic.TrafficManager, threshold int64) *NetworkHub {
 	return &NetworkHub{
-		HubName:              name,
-		clientConnections:    make(map[string]net.Conn),
-		webSocketConnections: make(map[*WebSocketWrapper]bool),
-		registerWebSocket:    make(chan *websocketConn),
-		unregisterWebSocket:  make(chan *WebSocketWrapper),
-		incomingClientConn:   make(chan *common.RemoteConn),
-		serverRequests:       make(chan *request),
-		trafficManager:       trafficManager,
-		clientUnregister:     unregister,
-		dataUsageAccumulator: 0,
-		threshold:            threshold,
-		tickerManager:        &TickerManager{},
-		shutdownSignal:       make(chan struct{}),
+		HubName:                         name,
+		incomingClientConns:             make(map[string]net.Conn),
+		ProxyNotificationConns:          make(map[*ProxyNotificationConn]bool),
+		registerProxyNotificationConn:   make(chan *ProxyNotificationConn),
+		unregisterProxyNotificationConn: make(chan *ProxyNotificationConn),
+		incomingClientConn:              make(chan *helper.RemoteConn),
+		serverRequests:                  make(chan *request),
+		trafficManager:                  trafficManager,
+		clientUnregister:                unregister,
+		dataUsageAccumulator:            0,
+		threshold:                       threshold,
+		tickerManager:                   &TickerManager{},
+		shutdownSignal:                  make(chan struct{}),
 	}
 }
 
@@ -80,28 +79,24 @@ func (hub *NetworkHub) listen() {
 	shutdownComplete := make(chan struct{})
 	for {
 		select {
-		case conn := <-hub.registerWebSocket:
-			if !conn.AllowMultipleConnections && len(hub.webSocketConnections) > 0 {
+		case conn := <-hub.registerProxyNotificationConn:
+			if !conn.AllowMultipleConnections && len(hub.ProxyNotificationConns) > 0 {
 				conn.Close()
 				continue
 			}
-			if hub.webSocketConnections == nil {
-				hub.webSocketConnections = make(map[*WebSocketWrapper]bool)
+			if hub.ProxyNotificationConns == nil {
+				hub.ProxyNotificationConns = make(map[*ProxyNotificationConn]bool)
 			}
-			ws := NewWebSocketWrapper(conn.Conn, 50)
-			hub.webSocketConnections[ws] = true
-			if hub.webSocketConnections != nil {
-				go hub.checkConnection(ws)
-			}
-		case ws := <-hub.unregisterWebSocket:
+			hub.ProxyNotificationConns[conn] = true
+		case ws := <-hub.unregisterProxyNotificationConn:
 			ws.Close()
-			connections := hub.webSocketConnections
+			connections := hub.ProxyNotificationConns
 			if connections[ws] {
 				delete(connections, ws)
 			}
 		case request := <-hub.serverRequests:
 			destination := request.conn
-			pipe, exists := hub.clientConnections[request.ticket]
+			pipe, exists := hub.incomingClientConns[request.ticket]
 			if !exists {
 				func() {
 					fmt.Fprint(destination, badGatewayResponse)
@@ -109,49 +104,40 @@ func (hub *NetworkHub) listen() {
 				}()
 				continue
 			}
-			delete(hub.clientConnections, request.ticket)
+			delete(hub.incomingClientConns, request.ticket)
 			go hub.syncConnections(pipe, destination)
 		case remoteConn := <-hub.incomingClientConn:
-			if len(hub.webSocketConnections) == 0 {
+			if len(hub.ProxyNotificationConns) == 0 {
 				fmt.Fprint(remoteConn, badGatewayResponse)
 				remoteConn.Close()
 				continue
 			}
-			conns := make([]*WebSocketWrapper, 0, len(hub.webSocketConnections))
-			for key := range hub.webSocketConnections {
+			conns := make([]*ProxyNotificationConn, 0, len(hub.ProxyNotificationConns))
+			for key := range hub.ProxyNotificationConns {
 				conns = append(conns, key)
 			}
-			var ws *WebSocketWrapper
+			var ws *ProxyNotificationConn
 			if len(conns) == 1 {
 				ws = conns[0]
 			} else {
 				ws = conns[int(rng.Next()%uint32(len(conns)))]
 			}
 			ticket := hub.tickerManager.generate()
-			hub.clientConnections[ticket] = remoteConn
-			err := ws.WriteMessage(websocket.TextMessage, []byte(ticket))
+			hub.incomingClientConns[ticket] = remoteConn
+			_, err := ws.WriteTicket(ticket)
 			if err != nil {
 				fmt.Fprint(remoteConn, badGatewayResponse)
 				remoteConn.Close()
-				delete(hub.clientConnections, ticket)
+				delete(hub.incomingClientConns, ticket)
 			}
 		case <-hub.shutdownSignal:
-			close(hub.registerWebSocket)
+			close(hub.registerProxyNotificationConn)
+			close(hub.unregisterProxyNotificationConn)
 			close(hub.incomingClientConn)
 			close(hub.serverRequests)
 			close(hub.shutdownSignal)
 			shutdownComplete <- struct{}{}
 			return
-		}
-	}
-}
-
-func (hub *NetworkHub) checkConnection(ws *WebSocketWrapper) {
-	defer ws.Close()
-	for {
-		if _, _, err := ws.ReadMessage(); err != nil {
-			hub.unregisterWebSocket <- ws
-			break
 		}
 	}
 }

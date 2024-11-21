@@ -1,6 +1,7 @@
 package config
 
 import (
+	"crypto/tls"
 	"errors"
 	"flag"
 	"io"
@@ -8,7 +9,6 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/juliotorresmoreno/lipstick/helper"
 	"gopkg.in/yaml.v3"
 )
 
@@ -27,6 +27,19 @@ type AdminConfig struct {
 type TLSConfig struct {
 	CertificatePath string `yaml:"certificate_path"`
 	KeyPath         string `yaml:"key_path"`
+}
+
+func (t *TLSConfig) GetTLSConfig() *tls.Config {
+	cert, err := tls.LoadX509KeyPair(t.CertificatePath, t.KeyPath)
+	if err != nil {
+		log.Printf("Error loading TLS certificate: %v", err)
+		return nil
+	}
+
+	return &tls.Config{
+		MinVersion:   tls.VersionTLS12,
+		Certificates: []tls.Certificate{cert},
+	}
 }
 
 type DatabaseConfig struct {
@@ -140,25 +153,25 @@ func loadConfig() {
 	}
 
 	// Override with environment variables if no CLI or file value is provided
-	adminAddress = helper.SetValue(adminAddress, os.Getenv("ADMIN_ADDR")).(string)
-	managerAddress = helper.SetValue(managerAddress, os.Getenv("MANAGER_ADDR")).(string)
-	proxyAddress = helper.SetValue(proxyAddress, os.Getenv("PROXY_ADDR")).(string)
-	adminSecretKey = helper.SetValue(adminSecretKey, os.Getenv("ADMIN_SECRET_KEY")).(string)
-	tlsCert = helper.SetValue(tlsCert, os.Getenv("TLS_CERT")).(string)
-	tlsKey = helper.SetValue(tlsKey, os.Getenv("TLS_KEY")).(string)
-	redisHost = helper.SetValue(redisHost, os.Getenv("REDIS_HOST")).(string)
-	redisPort = helper.SetValue(redisPort, parseEnvInt("REDIS_PORT", redisPort)).(int)
-	redisPassword = helper.SetValue(redisPassword, os.Getenv("REDIS_PASSWORD")).(string)
-	redisDatabase = helper.SetValue(redisDatabase, parseEnvInt("REDIS_DB", redisDatabase)).(int)
-	redisPoolSize = helper.SetValue(redisPoolSize, parseEnvInt("REDIS_POOL_SIZE", redisPoolSize)).(int)
-	redisMinIdleConns = helper.SetValue(redisMinIdleConns, parseEnvInt("REDIS_MIN_IDLE_CONNS", redisMinIdleConns)).(int)
-	redisPoolTimeout = helper.SetValue(redisPoolTimeout, parseEnvInt("REDIS_POOL_TIMEOUT", redisPoolTimeout)).(int)
-	dbHost = helper.SetValue(dbHost, os.Getenv("DB_HOST")).(string)
-	dbPort = helper.SetValue(dbPort, parseEnvInt("DB_PORT", dbPort)).(int)
-	dbUser = helper.SetValue(dbUser, os.Getenv("DB_USER")).(string)
-	dbPassword = helper.SetValue(dbPassword, os.Getenv("DB_PASSWORD")).(string)
-	dbName = helper.SetValue(dbName, os.Getenv("DB_NAME")).(string)
-	dbSSLMode = helper.SetValue(dbSSLMode, os.Getenv("DB_SSL_MODE")).(string)
+	adminAddress = setValue(adminAddress, os.Getenv("ADMIN_ADDR")).(string)
+	managerAddress = setValue(managerAddress, os.Getenv("MANAGER_ADDR")).(string)
+	proxyAddress = setValue(proxyAddress, os.Getenv("PROXY_ADDR")).(string)
+	adminSecretKey = setValue(adminSecretKey, os.Getenv("ADMIN_SECRET_KEY")).(string)
+	tlsCert = setValue(tlsCert, os.Getenv("TLS_CERT")).(string)
+	tlsKey = setValue(tlsKey, os.Getenv("TLS_KEY")).(string)
+	redisHost = setValue(redisHost, os.Getenv("REDIS_HOST")).(string)
+	redisPort = setValue(redisPort, parseEnvInt("REDIS_PORT", redisPort)).(int)
+	redisPassword = setValue(redisPassword, os.Getenv("REDIS_PASSWORD")).(string)
+	redisDatabase = setValue(redisDatabase, parseEnvInt("REDIS_DB", redisDatabase)).(int)
+	redisPoolSize = setValue(redisPoolSize, parseEnvInt("REDIS_POOL_SIZE", redisPoolSize)).(int)
+	redisMinIdleConns = setValue(redisMinIdleConns, parseEnvInt("REDIS_MIN_IDLE_CONNS", redisMinIdleConns)).(int)
+	redisPoolTimeout = setValue(redisPoolTimeout, parseEnvInt("REDIS_POOL_TIMEOUT", redisPoolTimeout)).(int)
+	dbHost = setValue(dbHost, os.Getenv("DB_HOST")).(string)
+	dbPort = setValue(dbPort, parseEnvInt("DB_PORT", dbPort)).(int)
+	dbUser = setValue(dbUser, os.Getenv("DB_USER")).(string)
+	dbPassword = setValue(dbPassword, os.Getenv("DB_PASSWORD")).(string)
+	dbName = setValue(dbName, os.Getenv("DB_NAME")).(string)
+	dbSSLMode = setValue(dbSSLMode, os.Getenv("DB_SSL_MODE")).(string)
 
 	// Apply values
 	defaultConfig.Admin.Address = adminAddress

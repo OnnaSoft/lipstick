@@ -5,22 +5,13 @@ import (
 	"fmt"
 	"log"
 	"net"
-	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/gorilla/websocket"
 	"github.com/juliotorresmoreno/lipstick/helper"
 	"github.com/juliotorresmoreno/lipstick/server/auth"
-	"github.com/juliotorresmoreno/lipstick/server/common"
-	"github.com/juliotorresmoreno/lipstick/server/proxy"
+	"github.com/juliotorresmoreno/lipstick/server/config"
 	"github.com/juliotorresmoreno/lipstick/server/traffic"
 )
-
-var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool {
-		return true
-	},
-}
 
 type request struct {
 	conn   net.Conn
@@ -44,40 +35,34 @@ var badGatewayContent = `<!DOCTYPE html>
 
 var badGatewayResponse = badGatewayHeader + fmt.Sprint(len(badGatewayContent)) + "\n\n" + badGatewayContent
 
-type websocketConn struct {
+type ProxyNotificationConn struct {
 	Domain                   string
 	AllowMultipleConnections bool
-	*websocket.Conn
+	*HttpReadWriter
 }
 
 type Manager struct {
-	engine           *gin.Engine
-	hubs             map[string]*NetworkHub
-	remoteConn       chan *common.RemoteConn
-	registerDomain   chan *websocketConn
-	unregisterDomain chan string
-	proxy            *proxy.Proxy
-	trafficManager   *traffic.TrafficManager
-	authManager      auth.AuthManager
-	addr             string
-	cert             string
-	key              string
+	engine                          *gin.Engine
+	hubs                            map[string]*NetworkHub
+	incomingClientConn              chan *helper.RemoteConn
+	registerProxyNotificationConn   chan *ProxyNotificationConn
+	unregisterProxyNotificationConn chan string
+	trafficManager                  *traffic.TrafficManager
+	authManager                     auth.AuthManager
+	tlsConfig                       *tls.Config
 }
 
-func SetupManager(proxy *proxy.Proxy, addr string, cert string, key string) *Manager {
+func SetupManager(tlsConfig *tls.Config) *Manager {
 	gin.SetMode(gin.ReleaseMode)
 
 	manager := &Manager{
-		hubs:             make(map[string]*NetworkHub),
-		remoteConn:       make(chan *common.RemoteConn),
-		registerDomain:   make(chan *websocketConn),
-		unregisterDomain: make(chan string),
-		proxy:            proxy,
-		authManager:      auth.MakeAuthManager(),
-		trafficManager:   traffic.NewTrafficManager(64 * 1024),
-		addr:             addr,
-		cert:             cert,
-		key:              key,
+		hubs:                            make(map[string]*NetworkHub),
+		incomingClientConn:              make(chan *helper.RemoteConn),
+		registerProxyNotificationConn:   make(chan *ProxyNotificationConn),
+		unregisterProxyNotificationConn: make(chan string),
+		authManager:                     auth.MakeAuthManager(),
+		trafficManager:                  traffic.NewTrafficManager(64 * 1024),
+		tlsConfig:                       tlsConfig,
 	}
 
 	configureRouter(manager)
@@ -101,27 +86,17 @@ func (manager *Manager) handleTunnel(conn net.Conn, ticket string) {
 }
 
 func (manager *Manager) Listen() {
-	log.Println("Listening manager on", manager.addr)
-
-	defer manager.proxy.Close()
-
 	var err error
-	done := make(chan struct{})
-	go manager.manage(done)
-	go manager.proxy.Listen(manager.remoteConn)
-	cert := tls.Certificate{
-		Certificate: [][]byte{[]byte(manager.cert)},
-		PrivateKey:  []byte(manager.key),
-	}
+	config, _ := config.GetConfig()
+	go manager.processRequest()
+
+	log.Println("Listening manager on", config.Manager.Address)
 
 	var listener net.Listener
-	if manager.cert != "" && manager.key != "" {
-		listener, err = tls.Listen("tcp", manager.addr, &tls.Config{
-			MinVersion:   tls.VersionTLS12,
-			Certificates: []tls.Certificate{cert},
-		})
+	if manager.tlsConfig != nil {
+		listener, err = tls.Listen("tcp", config.Manager.Address, manager.tlsConfig)
 	} else {
-		listener, err = net.Listen("tcp", manager.addr)
+		listener, err = net.Listen("tcp", config.Manager.Address)
 	}
 	if err != nil {
 		log.Println("Error on listen", err)
@@ -129,42 +104,56 @@ func (manager *Manager) Listen() {
 		l := NewCustomListener(listener, manager)
 		manager.engine.RunListener(l)
 	}
-
-	done <- struct{}{}
 }
 
-func (manager *Manager) manage(done chan struct{}) {
+func (manager *Manager) HandleHTTPConn(conn net.Conn) {
+	manager.HandleTCPConn(conn)
+}
+
+func (manager *Manager) HandleTCPConn(conn net.Conn) {
+	domain, err := helper.GetDomainName(conn)
+	if err != nil {
+		fmt.Fprint(conn, badGatewayResponse)
+		conn.Close()
+		return
+	}
+	if _, ok := conn.(helper.RemoteConn); ok {
+		manager.incomingClientConn <- conn.(*helper.RemoteConn)
+		return
+	}
+	manager.incomingClientConn <- &helper.RemoteConn{Conn: conn, Domain: domain}
+}
+
+func (manager *Manager) processRequest() {
 	defer fmt.Println("Manager closed")
 	for {
 		select {
-		case conn := <-manager.registerDomain:
+		case conn := <-manager.registerProxyNotificationConn:
 			if manager.hubs[conn.Domain] == nil {
 				manager.hubs[conn.Domain] = NewNetworkHub(
 					conn.Domain,
-					manager.unregisterDomain,
+					manager.unregisterProxyNotificationConn,
 					manager.trafficManager,
 					64*1024,
 				)
 				go manager.hubs[conn.Domain].listen()
 			}
-			manager.hubs[conn.Domain].registerWebSocket <- conn
+			manager.hubs[conn.Domain].registerProxyNotificationConn <- conn
 			fmt.Println("Registered", conn.Domain)
-		case domain := <-manager.unregisterDomain:
+		case domain := <-manager.unregisterProxyNotificationConn:
 			if manager.hubs[domain] != nil {
 				manager.hubs[domain].shutdownSignal <- struct{}{}
 				delete(manager.hubs, domain)
 			}
 			fmt.Println("Unregistered", domain)
-		case remoteConn := <-manager.remoteConn:
-			if manager.hubs[remoteConn.Domain] == nil {
-				fmt.Fprint(remoteConn, badGatewayResponse)
-				remoteConn.Close()
+		case incomingClientConn := <-manager.incomingClientConn:
+			if manager.hubs[incomingClientConn.Domain] == nil {
+				fmt.Fprint(incomingClientConn, badGatewayResponse)
+				incomingClientConn.Close()
 				continue
 			}
-			domain := manager.hubs[remoteConn.Domain]
-			domain.incomingClientConn <- remoteConn
-		case <-done:
-			return
+			domain := manager.hubs[incomingClientConn.Domain]
+			domain.incomingClientConn <- incomingClientConn
 		}
 	}
 }
