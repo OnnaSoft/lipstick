@@ -18,23 +18,6 @@ type request struct {
 	ticket string
 }
 
-var badGatewayHeader = `HTTP/1.1 502 Bad Gateway
-Content-Type: text/html
-Content-Length: `
-
-var badGatewayContent = `<!DOCTYPE html>
-<html>
-<head>
-    <title>502 Bad Gateway</title>
-</head>
-<body>
-    <h1>Bad Gateway</h1>
-    <p>The server encountered a temporary error and could not complete your request.</p>
-</body>
-</html>`
-
-var badGatewayResponse = badGatewayHeader + fmt.Sprint(len(badGatewayContent)) + "\n\n" + badGatewayContent
-
 type ProxyNotificationConn struct {
 	Domain                   string
 	AllowMultipleConnections bool
@@ -113,7 +96,7 @@ func (manager *Manager) HandleHTTPConn(conn net.Conn) {
 func (manager *Manager) HandleTCPConn(conn net.Conn) {
 	domain, err := helper.GetDomainName(conn)
 	if err != nil {
-		fmt.Fprint(conn, badGatewayResponse)
+		fmt.Fprint(conn, helper.BadGatewayResponse)
 		conn.Close()
 		return
 	}
@@ -146,7 +129,7 @@ func (manager *Manager) processRequest() {
 			}
 		case incomingClientConn := <-manager.incomingClientConn:
 			if manager.hubs[incomingClientConn.Domain] == nil {
-				fmt.Fprint(incomingClientConn, badGatewayResponse)
+				fmt.Fprint(incomingClientConn, helper.BadGatewayResponse)
 				incomingClientConn.Close()
 				continue
 			}

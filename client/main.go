@@ -50,7 +50,6 @@ func startClient(proxyTarget string) {
 		req.Header = headers
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
-			log.Println("Error connecting to server:", err)
 			time.Sleep(retryDelay)
 			continue
 		}
@@ -85,7 +84,7 @@ func establishConnection(protocol, proxyTarget, uuid string) {
 
 	connection, err := httpmanager.Connect(url, nil)
 	if err != nil {
-		fmt.Fprintf(connection, helper.HttpErrorResponse)
+		fmt.Fprintf(connection, helper.BadGatewayResponse)
 		return
 	}
 	defer connection.Close()
@@ -93,7 +92,7 @@ func establishConnection(protocol, proxyTarget, uuid string) {
 	b := make([]byte, 1024)
 	n, err := connection.Read(b)
 	if err != nil {
-		fmt.Fprintf(connection, helper.HttpErrorResponse)
+		fmt.Fprintf(connection, helper.BadGatewayResponse)
 		return
 	}
 	buff := b[:n]

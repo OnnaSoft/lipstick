@@ -142,5 +142,5 @@ func handleWebSocket(connection net.Conn, proxyTarget, protocol string, requestT
 }
 
 func sendErrorResponse(connection net.Conn) {
-	connection.Write([]byte(helper.HttpErrorResponse))
+	connection.Write([]byte(helper.BadGatewayBody))
 }

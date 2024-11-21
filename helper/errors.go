@@ -2,11 +2,11 @@ package helper
 
 import "fmt"
 
-var httpErrorHeader = `HTTP/1.1 502 Bad Gateway
+var BadGatewayHeader = `HTTP/1.1 502 Bad Gateway
 Content-Type: text/html
 Content-Length: `
 
-var httpErrorContent = `<!DOCTYPE html>
+var BadGatewayBody = `<!DOCTYPE html>
 <html>
 <head>
     <title>502 Bad Gateway</title>
@@ -17,4 +17,4 @@ var httpErrorContent = `<!DOCTYPE html>
 </body>
 </html>`
 
-var HttpErrorResponse = httpErrorHeader + fmt.Sprint(len(httpErrorContent)) + "\n\n" + httpErrorContent
+var BadGatewayResponse = BadGatewayHeader + fmt.Sprint(len(BadGatewayBody)) + "\n\n" + BadGatewayBody

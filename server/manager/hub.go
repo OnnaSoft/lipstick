@@ -99,7 +99,7 @@ func (hub *NetworkHub) listen() {
 			pipe, exists := hub.incomingClientConns[request.ticket]
 			if !exists {
 				func() {
-					fmt.Fprint(destination, badGatewayResponse)
+					fmt.Fprint(destination, helper.BadGatewayResponse)
 					destination.Close()
 				}()
 				continue
@@ -108,7 +108,7 @@ func (hub *NetworkHub) listen() {
 			go hub.syncConnections(pipe, destination)
 		case remoteConn := <-hub.incomingClientConn:
 			if len(hub.ProxyNotificationConns) == 0 {
-				fmt.Fprint(remoteConn, badGatewayResponse)
+				fmt.Fprint(remoteConn, helper.BadGatewayResponse)
 				remoteConn.Close()
 				continue
 			}
@@ -126,7 +126,7 @@ func (hub *NetworkHub) listen() {
 			hub.incomingClientConns[ticket] = remoteConn
 			_, err := ws.WriteTicket(ticket)
 			if err != nil {
-				fmt.Fprint(remoteConn, badGatewayResponse)
+				fmt.Fprint(remoteConn, helper.BadGatewayResponse)
 				remoteConn.Close()
 				delete(hub.incomingClientConns, ticket)
 			}
