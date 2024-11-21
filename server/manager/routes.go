@@ -27,7 +27,7 @@ func (r *router) health(c *gin.Context) {
 	host := c.Request.Host
 	domainName := strings.Split(host, ":")[0]
 
-	if domain, ok := r.manager.hubs[domainName]; ok {
+	if domain, ok := r.manager.GetHub(domainName); ok {
 		c.JSON(http.StatusOK, gin.H{
 			"status":     "ok",
 			"domain":     domain.HubName,
@@ -77,9 +77,23 @@ func (r *router) strem(c *gin.Context) {
 	rw.WriteString("\r\n")
 	rw.Flush()
 
-	r.manager.registerProxyNotificationConn <- &ProxyNotificationConn{
+	var hub *NetworkHub
+	hub, ok := r.manager.GetHub(domain.Name)
+	if !ok {
+		hub = NewNetworkHub(
+			domain.Name,
+			r.manager.unregisterProxyNotificationConn,
+			r.manager.trafficManager,
+			64*1024,
+		)
+		r.manager.AddHub(domain.Name, hub)
+		go hub.listen()
+	}
+
+	notification := &ProxyNotificationConn{
 		Domain:                   domain.Name,
 		HttpReadWriter:           rw,
 		AllowMultipleConnections: domain.AllowMultipleConnections,
 	}
+	hub.registerProxyNotificationConn <- notification
 }

@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"os/signal"
 
@@ -43,8 +44,12 @@ func main() {
 
 	proxy.OnListen(func() { log.Println("Listening login on", conf.Proxy.Address) })
 	proxy.OnClose(func() { log.Println("Proxy closed") })
-	proxy.OnTCPConn(manager.HandleTCPConn)
-	proxy.OnHTTPConn(manager.HandleHTTPConn)
+	proxy.OnTCPConn(func(c net.Conn) {
+		go manager.HandleTCPConn(c)
+	})
+	proxy.OnHTTPConn(func(c net.Conn) {
+		go manager.HandleHTTPConn(c)
+	})
 
 	go manager.Listen()
 	go admin.Listen()

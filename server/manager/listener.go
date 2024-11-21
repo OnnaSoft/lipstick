@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"net"
 	"strings"
+
+	"github.com/OnnaSoft/lipstick/helper"
 )
 
 type CustomerAccepter struct {
@@ -63,13 +65,13 @@ func (cl *CustomListener) handle(conn net.Conn) {
 	}
 
 	if url == "/" {
-		cl.conn <- CustomerAccepter{&CustomConn{Conn: conn, buff: buffer[:n]}, nil}
+		cl.conn <- CustomerAccepter{helper.NewConnWithBuffer(conn, buffer[:n]), nil}
 		return
 	}
 
 	if strings.HasPrefix(url, "/") && len(url) > 1 && strings.Count(url, "/") == 1 {
 		ticket := url[1:]
-		err := readUntilHeadersEnd(&CustomConn{Conn: conn, buff: buffer[:n]})
+		err := readUntilHeadersEnd(helper.NewConnWithBuffer(conn, buffer[:n]))
 		if err != nil {
 			cl.conn <- CustomerAccepter{nil, err}
 			return
@@ -121,18 +123,4 @@ func parseRequest(buffer []byte) (requestLine, url string, valid bool) {
 		return requestLine, "", false
 	}
 	return requestLine, parts[1], true
-}
-
-type CustomConn struct {
-	net.Conn
-	buff []byte
-}
-
-func (cc *CustomConn) Read(b []byte) (n int, err error) {
-	if len(cc.buff) > 0 {
-		n = copy(b, cc.buff)
-		cc.buff = cc.buff[n:]
-		return n, nil
-	}
-	return cc.Conn.Read(b)
 }
