@@ -33,23 +33,20 @@ func loadConfig() {
 	)
 
 	// Default configuration
-	result := Config{
-		Workers: 10, // Default number of workers
-	}
+	result := Config{}
 
 	// Set default configuration path relative to the executable's location
 	execDir, err := filepath.Abs(filepath.Dir(os.Args[0]))
 	if err != nil {
-		log.Fatalf("Failed to determine executable directory: %v", err)
+		log.Printf("Error getting executable directory: %v", err)
 	}
 	defaultConfigPath := filepath.Join(execDir, "config.client.yml")
 
 	// CLI Flags
 	flag.StringVar(&configPath, "c", defaultConfigPath, "Path to the configuration file")
-	flag.StringVar(&serverURL, "s", "ws://localhost:5051/ws", "URL for the server manager WebSocket")
+	flag.StringVar(&serverURL, "s", "http://localhost:5051", "URL for the server manager WebSocket")
 	flag.StringVar(&proxyPass, "p", "tcp://127.0.0.1:12000", "Proxy targets separated by spaces")
 	flag.StringVar(&apiSecret, "k", "", "API secret for authenticating nodes")
-	flag.IntVar(&workers, "w", 1, "Number of worker routines")
 	flag.Parse()
 
 	// Load YAML config file
@@ -61,8 +58,6 @@ func loadConfig() {
 		} else if err := yaml.Unmarshal(content, &result); err != nil {
 			log.Printf("Error parsing config file: %v", err)
 		}
-	} else {
-		log.Printf("No configuration file found at %s. Using defaults and CLI args.", configPath)
 	}
 
 	// Merge CLI arguments

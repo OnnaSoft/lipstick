@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -42,14 +43,14 @@ func startClient(proxyTarget string) {
 	for {
 		req, err := http.NewRequest("GET", serverURL, nil)
 		if err != nil {
-			fmt.Println("Error al conectar al servidor WebSocket:", err)
+			log.Println("Error creating request to server:", err)
 			time.Sleep(retryDelay)
 			continue
 		}
 		req.Header = headers
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
-			fmt.Println("Error al conectar al servidor WebSocket:", err)
+			log.Println("Error connecting to server:", err)
 			time.Sleep(retryDelay)
 			continue
 		}
@@ -96,10 +97,12 @@ func establishConnection(protocol, proxyTarget, uuid string) {
 		return
 	}
 	buff := b[:n]
+	conn := helper.NewConnWithBuffer(connection, buff)
+
 	if helper.IsHTTPRequest(string(buff)) {
-		handlers.HandleHTTP(helper.NewConnWithBuffer(connection, buff), proxyTarget, protocol)
+		handlers.HandleHTTP(conn, proxyTarget, protocol)
 		return
 	}
 
-	handlers.HandleTCP(connection, proxyTarget, protocol)
+	handlers.HandleTCP(conn, proxyTarget, protocol)
 }

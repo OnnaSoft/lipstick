@@ -42,14 +42,20 @@ func main() {
 	go func() {
 		for range time.Tick(1 * time.Second) {
 			elapsed := time.Since(startTime).Seconds()
+
 			completedRequestsMu.Lock()
 			reqs := completedRequests
 			completedRequestsMu.Unlock()
 
 			statusMu.Lock()
-			// Sobrescribir la línea anterior con \r
-			fmt.Printf("\rTiempo: %.2fs, Completadas: %d, RPS: %.2f", elapsed, reqs, float64(reqs)/elapsed)
+			stats := fmt.Sprintf("Tiempo: %.2fs, Completadas: %d, RPS: %.2f\nCódigos de estado:\n", elapsed, reqs, float64(reqs)/elapsed)
+			for statusCode, count := range statusCounts {
+				stats += fmt.Sprintf("  %d: %d\n", statusCode, count)
+			}
 			statusMu.Unlock()
+
+			// Mover cursor al inicio y limpiar la consola
+			fmt.Printf("\033[H\033[J%s", stats)
 
 			// Salir del loop si todas las solicitudes están completadas
 			if reqs >= totalRequests {
@@ -99,7 +105,7 @@ func main() {
 	fmt.Printf("Tiempo total: %s\n", elapsedTime)
 	fmt.Printf("Peticiones por segundo: %.2f\n", actualRate)
 
-	// Imprimir estadísticas de códigos de estado
+	// Imprimir estadísticas de códigos de estado finales
 	fmt.Println("Códigos de estado:")
 	for statusCode, count := range statusCounts {
 		fmt.Printf("  %d: %d\n", statusCode, count)

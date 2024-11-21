@@ -139,13 +139,11 @@ func (manager *Manager) processRequest() {
 				go manager.hubs[conn.Domain].listen()
 			}
 			manager.hubs[conn.Domain].registerProxyNotificationConn <- conn
-			fmt.Println("Registered", conn.Domain)
 		case domain := <-manager.unregisterProxyNotificationConn:
 			if manager.hubs[domain] != nil {
 				manager.hubs[domain].shutdownSignal <- struct{}{}
 				delete(manager.hubs, domain)
 			}
-			fmt.Println("Unregistered", domain)
 		case incomingClientConn := <-manager.incomingClientConn:
 			if manager.hubs[incomingClientConn.Domain] == nil {
 				fmt.Fprint(incomingClientConn, badGatewayResponse)
