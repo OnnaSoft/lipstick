@@ -6,11 +6,11 @@ import (
 	"log"
 	"net"
 
+	"github.com/OnnaSoft/lipstick/helper"
+	"github.com/OnnaSoft/lipstick/server/auth"
+	"github.com/OnnaSoft/lipstick/server/config"
+	"github.com/OnnaSoft/lipstick/server/traffic"
 	"github.com/gin-gonic/gin"
-	"github.com/juliotorresmoreno/lipstick/helper"
-	"github.com/juliotorresmoreno/lipstick/server/auth"
-	"github.com/juliotorresmoreno/lipstick/server/config"
-	"github.com/juliotorresmoreno/lipstick/server/traffic"
 )
 
 type request struct {

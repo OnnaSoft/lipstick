@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/OnnaSoft/lipstick/helper"
 	"github.com/gin-gonic/gin"
-	"github.com/juliotorresmoreno/lipstick/helper"
 )
 
 type router struct {

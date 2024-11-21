@@ -4,9 +4,9 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/OnnaSoft/lipstick/server/auth"
+	"github.com/OnnaSoft/lipstick/server/config"
 	"github.com/gin-gonic/gin"
-	"github.com/juliotorresmoreno/lipstick/server/auth"
-	"github.com/juliotorresmoreno/lipstick/server/config"
 )
 
 type router struct {

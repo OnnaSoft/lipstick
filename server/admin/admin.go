@@ -3,8 +3,8 @@ package admin
 import (
 	"log"
 
+	"github.com/OnnaSoft/lipstick/server/auth"
 	"github.com/gin-gonic/gin"
-	"github.com/juliotorresmoreno/lipstick/server/auth"
 )
 
 type Admin struct {

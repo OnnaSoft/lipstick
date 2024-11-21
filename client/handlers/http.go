@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/juliotorresmoreno/lipstick/helper"
+	"github.com/OnnaSoft/lipstick/helper"
 )
 
 var client = &http.Client{

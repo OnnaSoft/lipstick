@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/juliotorresmoreno/lipstick/helper"
+	"github.com/OnnaSoft/lipstick/helper"
 	"gopkg.in/yaml.v3"
 )
 

@@ -10,10 +10,10 @@ import (
 	"os/signal"
 	"time"
 
-	"github.com/juliotorresmoreno/lipstick/client/config"
-	"github.com/juliotorresmoreno/lipstick/client/handlers"
-	"github.com/juliotorresmoreno/lipstick/client/manager"
-	"github.com/juliotorresmoreno/lipstick/helper"
+	"github.com/OnnaSoft/lipstick/client/config"
+	"github.com/OnnaSoft/lipstick/client/handlers"
+	"github.com/OnnaSoft/lipstick/client/manager"
+	"github.com/OnnaSoft/lipstick/helper"
 )
 
 var httpmanager = manager.NewHTTPManager()

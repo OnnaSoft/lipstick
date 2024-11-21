@@ -1,7 +1,7 @@
 [Unit]
 Description=Advanced Tunnel
 After=network.target
-Documentation=https://github.com/juliotorresmoreno/lipstick/blob/master/README.md
+Documentation=https://github.com/OnnaSoft/lipstick/blob/master/README.md
 
 [Service]
 Type=simple

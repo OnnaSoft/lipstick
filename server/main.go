@@ -9,11 +9,11 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 
-	"github.com/juliotorresmoreno/lipstick/helper"
-	"github.com/juliotorresmoreno/lipstick/server/admin"
-	"github.com/juliotorresmoreno/lipstick/server/config"
-	"github.com/juliotorresmoreno/lipstick/server/db"
-	"github.com/juliotorresmoreno/lipstick/server/manager"
+	"github.com/OnnaSoft/lipstick/helper"
+	"github.com/OnnaSoft/lipstick/server/admin"
+	"github.com/OnnaSoft/lipstick/server/config"
+	"github.com/OnnaSoft/lipstick/server/db"
+	"github.com/OnnaSoft/lipstick/server/manager"
 )
 
 func main() {

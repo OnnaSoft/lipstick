@@ -4,9 +4,9 @@ import (
 	"log"
 	"os"
 
+	"github.com/OnnaSoft/lipstick/server/config"
 	"github.com/jinzhu/gorm"
 	_ "github.com/jinzhu/gorm/dialects/postgres"
-	"github.com/juliotorresmoreno/lipstick/server/config"
 )
 
 var defaultConnection *gorm.DB

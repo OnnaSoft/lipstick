@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/juliotorresmoreno/lipstick/helper"
-	"github.com/juliotorresmoreno/lipstick/server/traffic"
+	"github.com/OnnaSoft/lipstick/helper"
+	"github.com/OnnaSoft/lipstick/server/traffic"
 )
 
 var rng = helper.NewXORShift(uint32(time.Now().UnixNano()))

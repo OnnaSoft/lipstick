@@ -5,8 +5,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/OnnaSoft/lipstick/server/db"
 	"github.com/jinzhu/gorm"
-	"github.com/juliotorresmoreno/lipstick/server/db"
 )
 
 type PostgresAuthManager struct {

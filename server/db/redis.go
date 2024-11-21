@@ -6,7 +6,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/juliotorresmoreno/lipstick/server/config"
+	"github.com/OnnaSoft/lipstick/server/config"
 	"github.com/redis/go-redis/v9"
 )
 

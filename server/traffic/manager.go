@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/juliotorresmoreno/lipstick/server/db"
+	"github.com/OnnaSoft/lipstick/server/db"
 )
 
 type TrafficManager struct {
