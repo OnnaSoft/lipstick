@@ -29,7 +29,7 @@ func main() {
 	for _, proxyTarget := range configuration.ProxyPass {
 		go startClient(proxyTarget)
 	}
-	fmt.Println("Cliente iniciado. Presiona Ctrl+C para salir.")
+	fmt.Println("Presiona Ctrl+C para salir.")
 
 	<-interruptChannel
 	fmt.Println("Desconectando...")
@@ -54,6 +54,7 @@ func startClient(proxyTarget string) {
 			continue
 		}
 
+		fmt.Println("Connected to server at", serverURL)
 		handleTickets(resp.Body, proxyTarget)
 		time.Sleep(retryDelay)
 	}

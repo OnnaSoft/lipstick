@@ -4,7 +4,6 @@ import (
 	"crypto/tls"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -85,28 +84,7 @@ func handleHTTPRequest(connection net.Conn, serverURL string, req *http.Request,
 	}
 	defer resp.Body.Close()
 
-	// Send the response back to the WebSocket client
-	err = sendHTTPResponse(connection, resp)
-	if err != nil {
-		log.Println("Error sending HTTP response:", err)
-	}
-}
-
-func sendHTTPResponse(connection net.Conn, resp *http.Response) error {
-	headers := ""
-	for key, values := range resp.Header {
-		for _, value := range values {
-			headers += fmt.Sprintf("%s: %s\r\n", key, value)
-		}
-	}
-	responseHeader := fmt.Sprintf("HTTP/1.1 %d %s\r\n%s\r\n", resp.StatusCode, resp.Status, headers)
-	if _, err := fmt.Fprint(connection, responseHeader); err != nil {
-		fmt.Println("Error sending HTTP response header:", err)
-		return err
-	}
-
-	_, err := io.Copy(connection, resp.Body)
-	return err
+	resp.Write(connection)
 }
 
 func handleWebSocket(connection net.Conn, proxyTarget, protocol string, requestToServer *http.Request) {

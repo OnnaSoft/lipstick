@@ -122,6 +122,7 @@ func (manager *Manager) HandleTCPConn(conn net.Conn) {
 	}
 	hub, ok := manager.GetHub(domain)
 	if !ok {
+		fmt.Println("Domain not found")
 		fmt.Fprint(conn, helper.BadGatewayResponse)
 		conn.Close()
 		return
