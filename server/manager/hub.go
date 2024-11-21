@@ -79,7 +79,7 @@ func (hub *NetworkHub) listen() {
 	for {
 		select {
 		case conn := <-hub.registerProxyNotificationConn:
-			if !conn.AllowMultipleConnections && len(hub.ProxyNotificationConns) > 0 {
+			if len(hub.ProxyNotificationConns) > 0 {
 				conn.Close()
 				continue
 			}
@@ -87,7 +87,7 @@ func (hub *NetworkHub) listen() {
 				hub.ProxyNotificationConns = make(map[*ProxyNotificationConn]bool)
 			}
 			hub.ProxyNotificationConns[conn] = true
-			go checkConnection(conn)
+			go hub.checkConnection(conn)
 		case ws := <-hub.unregisterProxyNotificationConn:
 			ws.Close()
 			connections := hub.ProxyNotificationConns
@@ -142,7 +142,10 @@ func (hub *NetworkHub) listen() {
 	}
 }
 
-func checkConnection(connection *ProxyNotificationConn) {
+func (h *NetworkHub) checkConnection(connection *ProxyNotificationConn) {
+	defer func() {
+		h.unregisterProxyNotificationConn <- connection
+	}()
 	for {
 		_, _, err := connection.ReadMessage()
 		if err != nil {
