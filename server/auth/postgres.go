@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/OnnaSoft/lipstick/server/config"
 	"github.com/OnnaSoft/lipstick/server/db"
 	"github.com/jinzhu/gorm"
 )
@@ -22,7 +23,11 @@ type cacheEntry struct {
 }
 
 func NewPostgresAuthManager() AuthManager {
-	conn, err := db.GetConnection()
+	conf, err := config.GetConfig()
+	if err != nil {
+		log.Fatal(err)
+	}
+	conn, err := db.GetConnection(conf.Database)
 	if err != nil {
 		log.Fatal(err)
 	}

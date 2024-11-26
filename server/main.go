@@ -34,7 +34,7 @@ func main() {
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt)
 
-	db.Migrate()
+	db.Migrate(conf.Database)
 
 	tlsConfig := conf.TLS.GetTLSConfig()
 

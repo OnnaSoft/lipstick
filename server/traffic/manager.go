@@ -1,11 +1,8 @@
 package traffic
 
 import (
-	"log"
 	"sync"
 	"time"
-
-	"github.com/OnnaSoft/lipstick/server/db"
 )
 
 type TrafficManager struct {
@@ -20,7 +17,7 @@ func NewTrafficManager(threshold int64) *TrafficManager {
 	manager := &TrafficManager{
 		trafficData: make(map[string]int64),
 		threshold:   threshold,
-		dbTicker:    time.NewTicker(5 * time.Minute),
+		dbTicker:    time.NewTicker(5 * time.Second),
 		stopChan:    make(chan struct{}),
 	}
 	go manager.run()
@@ -59,30 +56,6 @@ func (tm *TrafficManager) saveAllToDatabase() {
 
 	for domain, traffic := range dataToSave {
 		tm.updateDatabase(domain, traffic)
-	}
-}
-
-func (tm *TrafficManager) updateDatabase(domain string, traffic int64) {
-	connection, err := db.GetConnection()
-	if err != nil {
-		log.Printf("Error connecting to database: %v", err)
-		return
-	}
-
-	today := time.Now().Truncate(24 * time.Hour)
-	var dailyConsumption db.DailyConsumption
-	err = connection.FirstOrCreate(
-		&dailyConsumption,
-		db.DailyConsumption{Domain: domain, Date: today},
-	).Error
-	if err != nil {
-		log.Printf("Error querying DailyConsumption: %v", err)
-		return
-	}
-
-	err = connection.Model(&dailyConsumption).Update("BytesUsed", dailyConsumption.BytesUsed+traffic).Error
-	if err != nil {
-		log.Printf("Error updating DailyConsumption: %v", err)
 	}
 }
 

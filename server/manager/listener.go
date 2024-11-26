@@ -64,7 +64,7 @@ func (cl *CustomListener) handle(conn net.Conn) {
 		return
 	}
 
-	if url == "/" {
+	if url == "/" || url == "/health" {
 		cl.conn <- CustomerAccepter{helper.NewConnWithBuffer(conn, buffer[:n]), nil}
 		return
 	}

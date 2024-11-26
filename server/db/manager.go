@@ -11,17 +11,12 @@ import (
 
 var defaultConnection *gorm.DB
 
-func NewConnection() (*gorm.DB, error) {
-	conf, err := config.GetConfig()
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	dsn := "host=" + conf.Database.Host +
-		" user=" + conf.Database.User +
-		" dbname=" + conf.Database.Database +
-		" sslmode=" + conf.Database.SSLMode +
-		" password=" + conf.Database.Password
+func NewConnection(conf config.DatabaseConfig) (*gorm.DB, error) {
+	dsn := "host=" + conf.Host +
+		" user=" + conf.User +
+		" dbname=" + conf.Database +
+		" sslmode=" + conf.SSLMode +
+		" password=" + conf.Password
 	connection, err := gorm.Open("postgres", dsn)
 	if os.Getenv("DEBUG") == "true" {
 		connection.LogMode(true)
@@ -34,9 +29,9 @@ func NewConnection() (*gorm.DB, error) {
 	return connection, nil
 }
 
-func GetConnection() (*gorm.DB, error) {
+func GetConnection(conf config.DatabaseConfig) (*gorm.DB, error) {
 	if defaultConnection == nil {
-		connection, err := NewConnection()
+		connection, err := NewConnection(conf)
 		if err != nil {
 			return nil, err
 		}
@@ -52,8 +47,8 @@ func CloseConnection() {
 	}
 }
 
-func Migrate() {
-	connection, err := GetConnection()
+func Migrate(conf config.DatabaseConfig) {
+	connection, err := GetConnection(conf)
 	if err != nil {
 		log.Fatal(err)
 	}
