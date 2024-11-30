@@ -34,26 +34,22 @@ func NewPostgresAuthManager() AuthManager {
 
 	return &PostgresAuthManager{
 		db:       conn,
-		cacheTTL: 5 * time.Minute, // Configura el TTL de la caché
+		cacheTTL: 5 * time.Minute,
 	}
 }
 
-// Internal method to get cached data or fallback to the database
 func (p *PostgresAuthManager) getCached(key string, fallback func() (interface{}, error)) (interface{}, error) {
 	if entry, found := p.cache.Load(key); found {
 		cached := entry.(cacheEntry)
 		if time.Since(cached.timestamp) < p.cacheTTL {
 			return cached.data, nil
 		}
-		// Invalidate expired entry
 		p.cache.Delete(key)
 	}
 
-	// Fallback to the database
 	p.cacheMutex.Lock()
 	defer p.cacheMutex.Unlock()
 
-	// Double-check to avoid redundant queries
 	if entry, found := p.cache.Load(key); found {
 		cached := entry.(cacheEntry)
 		if time.Since(cached.timestamp) < p.cacheTTL {
@@ -72,7 +68,6 @@ func (p *PostgresAuthManager) getCached(key string, fallback func() (interface{}
 	return data, err
 }
 
-// GetDomains retrieves all domains with caching
 func (p *PostgresAuthManager) GetDomains() ([]*Domain, error) {
 	key := "all_domains"
 	data, err := p.getCached(key, func() (interface{}, error) {
@@ -98,7 +93,6 @@ func (p *PostgresAuthManager) GetDomains() ([]*Domain, error) {
 	return data.([]*Domain), nil
 }
 
-// GetDomain retrieves a single domain by name with caching
 func (p *PostgresAuthManager) GetDomain(domain string) (*Domain, error) {
 	key := "domain_" + domain
 	data, err := p.getCached(key, func() (interface{}, error) {
@@ -120,7 +114,6 @@ func (p *PostgresAuthManager) GetDomain(domain string) (*Domain, error) {
 	return data.(*Domain), nil
 }
 
-// AddDomain adds a new domain
 func (p *PostgresAuthManager) AddDomain(domain *Domain) error {
 	tx := p.db.Create(&db.Domain{
 		Name:                     domain.Name,
@@ -131,12 +124,10 @@ func (p *PostgresAuthManager) AddDomain(domain *Domain) error {
 		return tx.Error
 	}
 
-	// Invalidate cache for all domains
 	p.cache.Delete("all_domains")
 	return nil
 }
 
-// UpdateDomain updates an existing domain
 func (p *PostgresAuthManager) UpdateDomain(domain *Domain) error {
 	tx := p.db.Model(&db.Domain{}).Where("id = ?", domain.ID).Updates(map[string]interface{}{
 		"name":                       domain.Name,
@@ -147,13 +138,11 @@ func (p *PostgresAuthManager) UpdateDomain(domain *Domain) error {
 		return tx.Error
 	}
 
-	// Invalidate cache for the specific domain and all domains
 	p.cache.Delete("domain_" + domain.Name)
 	p.cache.Delete("all_domains")
 	return nil
 }
 
-// DelDomain deletes a domain by ID
 func (p *PostgresAuthManager) DelDomain(id uint) error {
 	result := &db.Domain{}
 	tx := p.db.First(result, id)
@@ -166,7 +155,6 @@ func (p *PostgresAuthManager) DelDomain(id uint) error {
 		return tx.Error
 	}
 
-	// Invalidate cache for the specific domain and all domains
 	p.cache.Delete("domain_" + result.Name)
 	p.cache.Delete("all_domains")
 	return nil

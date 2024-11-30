@@ -109,7 +109,6 @@ func loadConfig() {
 		},
 	}
 
-	// Command-line flags
 	flag.StringVar(&configPath, "c", "/etc/lipstick/config.yml", "Path to the configuration file")
 	flag.StringVar(&adminAddress, "admin-addr", "", "Address for the admin API")
 	flag.StringVar(&managerAddress, "manager-addr", "", "Address for WebSocket manager connections")
@@ -133,7 +132,6 @@ func loadConfig() {
 
 	flag.Parse()
 
-	// Read configuration from file
 	f, err := os.Open(configPath)
 	if err == nil {
 		defer f.Close()
@@ -151,7 +149,6 @@ func loadConfig() {
 		return
 	}
 
-	// Override with environment variables if no CLI or file value is provided
 	adminAddress = setValue(adminAddress, os.Getenv("ADMIN_ADDR")).(string)
 	managerAddress = setValue(managerAddress, os.Getenv("MANAGER_ADDR")).(string)
 	proxyAddress = setValue(proxyAddress, os.Getenv("PROXY_ADDR")).(string)
@@ -172,7 +169,6 @@ func loadConfig() {
 	dbName = setValue(dbName, os.Getenv("DB_NAME")).(string)
 	dbSSLMode = setValue(dbSSLMode, os.Getenv("DB_SSL_MODE")).(string)
 
-	// Apply values
 	defaultConfig.Admin.Address = adminAddress
 	defaultConfig.Manager.Address = managerAddress
 	defaultConfig.Proxy.Address = proxyAddress
@@ -196,7 +192,6 @@ func loadConfig() {
 	appConfig = defaultConfig
 }
 
-// Helper function to parse environment variables as integers
 func parseEnvInt(key string, defaultValue int) int {
 	if value, ok := os.LookupEnv(key); ok {
 		if intValue, err := strconv.Atoi(value); err == nil {
