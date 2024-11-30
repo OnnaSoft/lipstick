@@ -22,6 +22,7 @@ func (tm *TrafficManager) updateDatabase(domain string, traffic int64) {
 	}
 
 	today := time.Now().Truncate(24 * time.Hour)
+	month := today.Format("2006-01")
 
 	var dailyConsumption db.DailyConsumption
 
@@ -31,6 +32,7 @@ func (tm *TrafficManager) updateDatabase(domain string, traffic int64) {
 			dailyConsumption = db.DailyConsumption{
 				Domain:    domain,
 				Date:      today,
+				Month:     month,
 				BytesUsed: traffic,
 			}
 			if err = connection.Create(&dailyConsumption).Error; err != nil {

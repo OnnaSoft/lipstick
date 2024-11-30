@@ -7,7 +7,7 @@ import (
 
 	"github.com/OnnaSoft/lipstick/server/config"
 	"github.com/OnnaSoft/lipstick/server/db"
-	"github.com/jinzhu/gorm"
+	"gorm.io/gorm"
 )
 
 type PostgresAuthManager struct {

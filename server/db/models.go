@@ -11,9 +11,10 @@ type Domain struct {
 
 type DailyConsumption struct {
 	ID        uint      `gorm:"primary_key"`
-	Domain    string    `gorm:"not null;index"`     // Domain name with an index
-	Date      time.Time `gorm:"type:date;not null"` // Date only (no time) with an index
-	BytesUsed int64     `gorm:"not null;default:0"` // Total bytes used by the domain on this day
+	Domain    string    `gorm:"not null;index"`
+	Date      time.Time `gorm:"type:date;not null"`
+	Month     string    `gorm:"type:varchar(7);not null;index"`
+	BytesUsed int64     `gorm:"not null;default:0"`
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }
