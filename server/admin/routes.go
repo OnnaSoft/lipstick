@@ -20,10 +20,12 @@ func configureRouter(admin *Admin) {
 	r.GET("/health", router.health)
 
 	r.GET("/domains", router.getDomains)
-	r.GET("/domains/:domain_name", router.getDomain)
+	const domainNamePath = "/domains/:domainName"
+
+	r.GET(domainNamePath, router.getDomain)
 	r.POST("/domains", router.addDomain)
-	r.PATCH("/domains/:domain_name", router.updateDomain)
-	r.DELETE("/domains/:domain_name", router.deleteDomain)
+	r.PATCH(domainNamePath, router.updateDomain)
+	r.DELETE(domainNamePath, router.deleteDomain)
 
 	admin.engine = r
 }
@@ -59,10 +61,10 @@ func (r *router) getDomain(c *gin.Context) {
 		return
 	}
 
-	domain_name := c.Param("domain_name")
-	domain, err := r.admin.authManager.GetDomain(domain_name)
+	domainName := c.Param("domainName")
+	domain, err := r.admin.authManager.GetDomain(domainName)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Unable to get domain"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "unable to get domain"})
 		return
 	}
 
@@ -101,8 +103,8 @@ func (r *router) updateDomain(c *gin.Context) {
 		return
 	}
 
-	domain_name := c.Param("domain_name")
-	record, err := r.admin.authManager.GetDomain(domain_name)
+	domainName := c.Param("domainName")
+	record, err := r.admin.authManager.GetDomain(domainName)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Unable to get domain"})
 		return
@@ -123,8 +125,8 @@ func (r *router) deleteDomain(c *gin.Context) {
 		return
 	}
 
-	domain_name := c.Param("domain_name")
-	record, err := r.admin.authManager.GetDomain(domain_name)
+	domainName := c.Param("domainName")
+	record, err := r.admin.authManager.GetDomain(domainName)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Unable to get domain"})
 		return

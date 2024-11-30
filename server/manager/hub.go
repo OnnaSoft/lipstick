@@ -79,67 +79,85 @@ func (hub *NetworkHub) listen() {
 	for {
 		select {
 		case conn := <-hub.registerProxyNotificationConn:
-			if !conn.AllowMultipleConnections && len(hub.ProxyNotificationConns) > 0 {
-				conn.Close()
-				continue
-			}
-			if hub.ProxyNotificationConns == nil {
-				hub.ProxyNotificationConns = make(map[*ProxyNotificationConn]bool)
-			}
-			hub.ProxyNotificationConns[conn] = true
-			go hub.checkConnection(conn)
+			hub.handleRegisterProxyNotificationConn(conn)
 		case ws := <-hub.unregisterProxyNotificationConn:
-			ws.Close()
-			connections := hub.ProxyNotificationConns
-			if connections[ws] {
-				delete(connections, ws)
-			}
+			hub.handleUnregisterProxyNotificationConn(ws)
 		case request := <-hub.serverRequests:
-			destination := request.conn
-			pipe, exists := hub.incomingClientConns[request.ticket]
-			if !exists {
-				func() {
-					fmt.Fprint(destination, helper.BadGatewayResponse)
-					destination.Close()
-				}()
-				continue
-			}
-			delete(hub.incomingClientConns, request.ticket)
-			go hub.syncConnections(pipe, destination)
+			hub.handleServerRequest(request)
 		case remoteConn := <-hub.incomingClientConn:
-			if len(hub.ProxyNotificationConns) == 0 {
-				fmt.Fprint(remoteConn, helper.BadGatewayResponse)
-				remoteConn.Close()
-				continue
-			}
-			conns := make([]*ProxyNotificationConn, 0, len(hub.ProxyNotificationConns))
-			for key := range hub.ProxyNotificationConns {
-				conns = append(conns, key)
-			}
-			var ws *ProxyNotificationConn
-			if len(conns) == 1 {
-				ws = conns[0]
-			} else {
-				ws = conns[int(rng.Next()%uint32(len(conns)))]
-			}
-			ticket := hub.tickerManager.generate()
-			hub.incomingClientConns[ticket] = remoteConn
-			err := ws.WriteMessage(websocket.TextMessage, []byte(ticket))
-			if err != nil {
-				fmt.Fprint(remoteConn, helper.BadGatewayResponse)
-				remoteConn.Close()
-				delete(hub.incomingClientConns, ticket)
-			}
+			hub.handleIncomingClientConn(remoteConn)
 		case <-hub.shutdownSignal:
-			close(hub.registerProxyNotificationConn)
-			close(hub.unregisterProxyNotificationConn)
-			close(hub.incomingClientConn)
-			close(hub.serverRequests)
-			close(hub.shutdownSignal)
-			shutdownComplete <- struct{}{}
+			hub.handleShutdown(shutdownComplete)
 			return
 		}
 	}
+}
+
+func (hub *NetworkHub) handleRegisterProxyNotificationConn(conn *ProxyNotificationConn) {
+	if !conn.AllowMultipleConnections && len(hub.ProxyNotificationConns) > 0 {
+		conn.Close()
+		return
+	}
+	if hub.ProxyNotificationConns == nil {
+		hub.ProxyNotificationConns = make(map[*ProxyNotificationConn]bool)
+	}
+	hub.ProxyNotificationConns[conn] = true
+	go hub.checkConnection(conn)
+}
+
+func (hub *NetworkHub) handleUnregisterProxyNotificationConn(ws *ProxyNotificationConn) {
+	ws.Close()
+	connections := hub.ProxyNotificationConns
+	if connections[ws] {
+		delete(connections, ws)
+	}
+}
+
+func (hub *NetworkHub) handleServerRequest(request *request) {
+	destination := request.conn
+	pipe, exists := hub.incomingClientConns[request.ticket]
+	if !exists {
+		fmt.Fprint(destination, helper.BadGatewayResponse)
+		destination.Close()
+		return
+	}
+	delete(hub.incomingClientConns, request.ticket)
+	go hub.syncConnections(pipe, destination)
+}
+
+func (hub *NetworkHub) handleIncomingClientConn(remoteConn *helper.RemoteConn) {
+	if len(hub.ProxyNotificationConns) == 0 {
+		fmt.Fprint(remoteConn, helper.BadGatewayResponse)
+		remoteConn.Close()
+		return
+	}
+	conns := make([]*ProxyNotificationConn, 0, len(hub.ProxyNotificationConns))
+	for key := range hub.ProxyNotificationConns {
+		conns = append(conns, key)
+	}
+	var ws *ProxyNotificationConn
+	if len(conns) == 1 {
+		ws = conns[0]
+	} else {
+		ws = conns[int(rng.Next()%uint32(len(conns)))]
+	}
+	ticket := hub.tickerManager.generate()
+	hub.incomingClientConns[ticket] = remoteConn
+	err := ws.WriteMessage(websocket.TextMessage, []byte(ticket))
+	if err != nil {
+		fmt.Fprint(remoteConn, helper.BadGatewayResponse)
+		remoteConn.Close()
+		delete(hub.incomingClientConns, ticket)
+	}
+}
+
+func (hub *NetworkHub) handleShutdown(shutdownComplete chan struct{}) {
+	close(hub.registerProxyNotificationConn)
+	close(hub.unregisterProxyNotificationConn)
+	close(hub.incomingClientConn)
+	close(hub.serverRequests)
+	close(hub.shutdownSignal)
+	shutdownComplete <- struct{}{}
 }
 
 func (h *NetworkHub) checkConnection(connection *ProxyNotificationConn) {

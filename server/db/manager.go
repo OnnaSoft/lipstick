@@ -13,19 +13,16 @@ import (
 var defaultConnection *gorm.DB
 
 func NewConnection(conf config.DatabaseConfig) (*gorm.DB, error) {
-	// Construir el DSN para PostgreSQL
 	dsn := fmt.Sprintf(
 		"host=%s user=%s dbname=%s sslmode=%s password=%s",
 		conf.Host, conf.User, conf.Database, conf.SSLMode, conf.Password,
 	)
 
-	// Abrir conexión con PostgreSQL (se fuerza el uso de postgres)
 	connection, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}
 
-	// Activar el modo de depuración si está habilitado
 	if os.Getenv("DEBUG") == "true" {
 		db, _ := connection.DB()
 		db.SetMaxOpenConns(10)

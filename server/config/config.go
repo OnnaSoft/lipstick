@@ -81,7 +81,6 @@ func loadConfig() {
 	var dbHost, dbUser, dbPassword, dbName, dbSSLMode string
 	var dbPort int
 
-	// Default configuration
 	defaultConfig := AppConfig{
 		Admin: AdminConfig{
 			Address: ":5052",
