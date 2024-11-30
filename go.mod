@@ -54,4 +54,3 @@ require (
 	gorm.io/driver/postgres v1.5.10
 )
 
-replace github.com/OnnaSoft/lipstick => github.com/juliotorresmoreno/lipstick v0.0.2-alpha
