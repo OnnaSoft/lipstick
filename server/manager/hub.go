@@ -101,11 +101,15 @@ func (hub *NetworkHub) handleRegisterProxyNotificationConn(conn *ProxyNotificati
 		hub.ProxyNotificationConns = make(map[*ProxyNotificationConn]bool)
 	}
 	hub.ProxyNotificationConns[conn] = true
+	conn.conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 	go hub.checkConnection(conn)
 }
 
 func (hub *NetworkHub) handleUnregisterProxyNotificationConn(ws *ProxyNotificationConn) {
-	ws.Close()
+	go func() {
+		ws.Write([]byte("close"))
+		ws.Close()
+	}()
 	connections := hub.ProxyNotificationConns
 	if connections[ws] {
 		delete(connections, ws)
@@ -147,6 +151,7 @@ func (hub *NetworkHub) handleIncomingClientConn(remoteConn *helper.RemoteConn) {
 		fmt.Fprint(remoteConn, helper.BadGatewayResponse)
 		remoteConn.Close()
 		delete(hub.incomingClientConns, ticket)
+		fmt.Println("Error writing to ws")
 	}
 }
 
@@ -162,6 +167,7 @@ func (hub *NetworkHub) handleShutdown(shutdownComplete chan struct{}) {
 func (h *NetworkHub) checkConnection(connection *ProxyNotificationConn) {
 	defer func() {
 		h.unregisterProxyNotificationConn <- connection
+		fmt.Println("Connection closed")
 	}()
 	for {
 		b := make([]byte, 16)
@@ -169,6 +175,5 @@ func (h *NetworkHub) checkConnection(connection *ProxyNotificationConn) {
 		if err != nil {
 			break
 		}
-		time.Sleep(30 * time.Second)
 	}
 }

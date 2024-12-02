@@ -83,16 +83,18 @@ func (l *ListenerManager) ListenAndServe() error {
 	if l.onListen != nil {
 		l.onListen()
 	}
+	handleConnection := func(conn net.Conn) {
+		if err := l.handleConnection(conn); err != nil {
+			conn.Close()
+		}
+	}
+
 	for {
 		conn, err := l.Accept()
 		if err != nil {
 			return l.handleAcceptError(err)
 		}
-
-		if err := l.handleConnection(conn); err != nil {
-			conn.Close()
-			continue
-		}
+		go handleConnection(conn)
 	}
 }
 

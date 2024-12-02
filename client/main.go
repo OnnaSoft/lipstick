@@ -88,6 +88,7 @@ func readMessage(reader *bufio.Reader) (string, error) {
 
 	data := string(buffer[:n])
 	if data == "close" {
+		fmt.Println("Connection closed by server")
 		return "", fmt.Errorf("connection closed by server")
 	}
 
@@ -106,6 +107,8 @@ func handleTickets(connection net.Conn, proxyTarget string) {
 		if err != nil {
 			return
 		}
+
+		fmt.Println("Received ticket", ticket)
 
 		if len(ticket) > 0 {
 			protocol, targetAddress := helper.ParseTargetEndpoint(proxyTarget)

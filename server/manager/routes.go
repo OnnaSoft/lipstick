@@ -116,14 +116,9 @@ func (r *router) upgrade(c *gin.Context) {
 		http.Error(w, "Failed to hijack connection", http.StatusInternalServerError)
 		return
 	}
+
 	host := c.Request.Host
 	domainName := strings.Split(host, ":")[0]
-	if err != nil {
-		log.Println("Unable to get domain name", err)
-		conn.Close()
-		return
-	}
-
 	domain, err := r.manager.authManager.GetDomain(domainName)
 	if err != nil {
 		log.Println("Unable to get domain", err)
