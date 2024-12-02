@@ -133,7 +133,6 @@ func (hub *NetworkHub) handleRegisterProxyNotificationConn(conn *ProxyNotificati
 		return
 	}
 	hub.ProxyNotificationConns[conn] = true
-	//conn.conn.SetWriteDeadline(time.Now().Add(60 * time.Second))
 	logger.Default.Debug("ProxyNotificationConn registered for hub:", hub.HubName)
 	go hub.checkConnection(conn)
 }
