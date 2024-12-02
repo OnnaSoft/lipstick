@@ -20,20 +20,24 @@ func GetResponseWriter(w http.ResponseWriter) http.ResponseWriter {
 	return w
 }
 
-func GetHijack(w http.ResponseWriter) (net.Conn, error) {
+func GetHijack(w http.ResponseWriter) (net.Conn, *bufio.ReadWriter, error) {
 	sw := GetResponseWriter(w)
 	hijacker, ok := sw.(http.Hijacker)
 	if !ok {
-		return nil, fmt.Errorf("%v", "Hijacking not supported")
+		return nil, nil, fmt.Errorf("%v", "Hijacking not supported")
 	}
 
-	c, _, err := hijacker.Hijack()
-
-	return c, err
+	return hijacker.Hijack()
 }
 
 func GetDomainName(conn net.Conn) (string, error) {
-	tlsConn, ok := conn.(*tls.Conn)
+	var rawConn net.Conn = conn
+	connWithBuffer, ok := conn.(*ConnWithBuffer)
+	if ok {
+		rawConn = connWithBuffer.Conn
+	}
+
+	tlsConn, ok := rawConn.(*tls.Conn)
 	if !ok {
 		return "localhost", nil
 	}
@@ -50,22 +54,17 @@ func GetDomainName(conn net.Conn) (string, error) {
 }
 
 func IsHTTPRequest(data string) bool {
-	// Dividir el string en líneas
 	lines := strings.Split(data, "\n")
 	if len(lines) == 0 {
 		return false
 	}
 
-	// Tomar la primera línea (request line)
 	requestLine := strings.TrimSpace(lines[0])
-
-	// Dividir la línea en partes
 	parts := strings.Split(requestLine, " ")
 	if len(parts) != 3 {
 		return false
 	}
 
-	// Validar el método HTTP
 	method := parts[0]
 	validMethods := map[string]bool{
 		"GET":     true,
@@ -80,7 +79,6 @@ func IsHTTPRequest(data string) bool {
 		return false
 	}
 
-	// Validar que la versión comience con "HTTP/"
 	version := parts[2]
 	return strings.HasPrefix(version, "HTTP/")
 }
@@ -93,4 +91,20 @@ func ParseHTTPRequest(conn net.Conn) (*http.Request, error) {
 	}
 
 	return request, nil
+}
+
+func ReadUntilHeadersEnd(conn net.Conn) ([]byte, error) {
+	reader := bufio.NewReader(conn)
+	result := []byte{}
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			return []byte{}, fmt.Errorf("error reading headers: %w", err)
+		}
+		result = append(result, []byte(line)...)
+		if line == "\r\n" {
+			break
+		}
+	}
+	return result, nil
 }

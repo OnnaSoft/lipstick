@@ -9,7 +9,6 @@ import (
 
 	"github.com/OnnaSoft/lipstick/helper"
 	"github.com/OnnaSoft/lipstick/server/traffic"
-	"github.com/gorilla/websocket"
 )
 
 var rng = helper.NewXORShift(uint32(time.Now().UnixNano()))
@@ -143,7 +142,7 @@ func (hub *NetworkHub) handleIncomingClientConn(remoteConn *helper.RemoteConn) {
 	}
 	ticket := hub.tickerManager.generate()
 	hub.incomingClientConns[ticket] = remoteConn
-	err := ws.WriteMessage(websocket.TextMessage, []byte(ticket))
+	_, err := ws.Write([]byte(ticket))
 	if err != nil {
 		fmt.Fprint(remoteConn, helper.BadGatewayResponse)
 		remoteConn.Close()
@@ -165,7 +164,8 @@ func (h *NetworkHub) checkConnection(connection *ProxyNotificationConn) {
 		h.unregisterProxyNotificationConn <- connection
 	}()
 	for {
-		_, _, err := connection.ReadMessage()
+		b := make([]byte, 16)
+		_, err := connection.Read(b)
 		if err != nil {
 			break
 		}

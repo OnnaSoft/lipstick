@@ -4,8 +4,9 @@ import (
 	"bufio"
 	"bytes"
 	"errors"
-	"fmt"
 	"net"
+	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/OnnaSoft/lipstick/helper"
@@ -64,19 +65,25 @@ func (cl *CustomListener) handle(conn net.Conn) {
 		return
 	}
 
-	if url == "/" || url == "/health" {
+	urlsToIgnore := []string{"/", "/health", "/traffic"}
+	if slices.Contains(urlsToIgnore, url) {
 		cl.conn <- CustomerAccepter{helper.NewConnWithBuffer(conn, buffer[:n]), nil}
 		return
 	}
 
 	if strings.HasPrefix(url, "/") && len(url) > 1 && strings.Count(url, "/") == 1 {
 		ticket := url[1:]
-		err := readUntilHeadersEnd(helper.NewConnWithBuffer(conn, buffer[:n]))
+		b, err := helper.ReadUntilHeadersEnd(helper.NewConnWithBuffer(conn, buffer[:n]))
 		if err != nil {
 			cl.conn <- CustomerAccepter{nil, err}
 			return
 		}
-		cl.manager.handleTunnel(conn, ticket)
+		req, err := http.ReadRequest(bufio.NewReader(bytes.NewReader(b)))
+		if err != nil {
+			cl.conn <- CustomerAccepter{nil, err}
+			return
+		}
+		cl.manager.handleTunnel(conn, req, ticket)
 		return
 	}
 
@@ -98,20 +105,6 @@ func (cl *CustomListener) acceptConnections() {
 	}
 }
 
-func readUntilHeadersEnd(conn net.Conn) error {
-	reader := bufio.NewReader(conn)
-	for {
-		line, err := reader.ReadString('\n')
-		if err != nil {
-			return fmt.Errorf("error reading headers: %w", err)
-		}
-		if line == "\r\n" {
-			break
-		}
-	}
-	return nil
-}
-
 func parseRequest(buffer []byte) (requestLine, url string, valid bool) {
 	lines := bytes.Split(buffer, []byte("\n"))
 	if len(lines) == 0 {
@@ -122,5 +115,5 @@ func parseRequest(buffer []byte) (requestLine, url string, valid bool) {
 	if len(parts) < 2 {
 		return requestLine, "", false
 	}
-	return requestLine, parts[1], true
+	return requestLine, strings.Split(parts[1], "?")[0], true
 }

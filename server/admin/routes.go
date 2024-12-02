@@ -97,8 +97,8 @@ func (r *router) updateDomain(c *gin.Context) {
 		return
 	}
 
-	domain := &auth.Domain{}
-	if err := c.BindJSON(domain); err != nil {
+	domain := map[string]interface{}{}
+	if err := c.BindJSON(&domain); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -110,8 +110,14 @@ func (r *router) updateDomain(c *gin.Context) {
 		return
 	}
 
-	domain.ID = record.ID
-	if err := r.admin.authManager.UpdateDomain(domain); err != nil {
+	if _, ok := domain["apiKey"]; ok {
+		record.ApiKey = domain["apiKey"].(string)
+	}
+	if _, ok := domain["allowMultipleConnections"]; ok {
+		record.AllowMultipleConnections = domain["allowMultipleConnections"].(bool)
+	}
+
+	if err := r.admin.authManager.UpdateDomain(record); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Unable to update domain"})
 		return
 	}

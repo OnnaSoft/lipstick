@@ -1,8 +1,12 @@
 package main
 
 import (
+	"bufio"
+	"crypto/tls"
 	"fmt"
+	"io"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -35,44 +39,72 @@ func main() {
 }
 
 func startClient(proxyTarget string) {
+	fmt.Println("Connecting to", serverURL)
 	retryDelay := 3 * time.Second
 	headers := http.Header{}
 	headers.Set("authorization", configuration.APISecret)
 
+	env := os.Getenv("ENV")
+	if env == "development" {
+		websocket.DefaultDialer.TLSClientConfig = &tls.Config{
+			InsecureSkipVerify: true,
+		}
+		fmt.Println("Warning: Allowing insecure connections in development mode")
+	}
+
 	for {
-		conn, _, err := websocket.DefaultDialer.Dial(serverURL, headers)
+		conn, err := httpmanager.Connect(serverURL, headers)
 		if err != nil {
 			log.Printf("Error creating WebSocket connection: %v\n", serverURL)
 			time.Sleep(retryDelay)
 			continue
 		}
+		helper.ReadUntilHeadersEnd(conn)
 
 		fmt.Println("Connected to server at", serverURL)
+		go checkConnection(conn)
 		handleTickets(conn, proxyTarget)
+		fmt.Println("Disconnected from server at", serverURL)
 		time.Sleep(retryDelay)
 	}
 }
 
-func checkConnection(connection *websocket.Conn) {
+func checkConnection(connection io.ReadWriter) {
+	writeMessage := []byte("ping")
 	for {
-		err := connection.WriteMessage(websocket.PingMessage, nil)
+		_, err := connection.Write(writeMessage)
 		if err != nil {
-			break
+			return
 		}
 		time.Sleep(30 * time.Second)
 	}
 }
+func readMessage(reader *bufio.Reader) (string, error) {
+	buffer := make([]byte, 10)
+	n, err := reader.Read(buffer)
+	if err != nil {
+		return "", fmt.Errorf("error reading data: %w", err)
+	}
 
-func handleTickets(connection *websocket.Conn, proxyTarget string) {
+	data := string(buffer[:n])
+	if data == "close" {
+		return "", fmt.Errorf("connection closed by server")
+	}
+
+	return data, nil
+}
+
+func handleTickets(connection net.Conn, proxyTarget string) {
 	defer func() {
 		recover()
 	}()
 	defer connection.Close()
 
+	reader := bufio.NewReader(connection)
 	for {
-		_, ticket, err := connection.ReadMessage()
+		ticket, err := readMessage(reader)
 		if err != nil {
-			break
+			return
 		}
 
 		if len(ticket) > 0 {
@@ -83,6 +115,9 @@ func handleTickets(connection *websocket.Conn, proxyTarget string) {
 }
 
 func establishConnection(protocol, proxyTarget, uuid string) {
+	defer func() {
+		recover()
+	}()
 	url := serverURL + "/" + uuid
 
 	connection, err := httpmanager.Connect(url, nil)

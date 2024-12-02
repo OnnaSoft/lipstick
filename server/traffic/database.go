@@ -6,7 +6,7 @@ import (
 
 	"github.com/OnnaSoft/lipstick/server/config"
 	"github.com/OnnaSoft/lipstick/server/db"
-	"github.com/jinzhu/gorm"
+	"gorm.io/gorm"
 )
 
 func (tm *TrafficManager) updateDatabase(domain string, traffic int64) {
@@ -15,6 +15,7 @@ func (tm *TrafficManager) updateDatabase(domain string, traffic int64) {
 		log.Fatalf("Error getting config: %v", err)
 		return
 	}
+
 	connection, err := db.GetConnection(conf.Database)
 	if err != nil {
 		log.Printf("Error connecting to database: %v", err)
@@ -25,18 +26,18 @@ func (tm *TrafficManager) updateDatabase(domain string, traffic int64) {
 	month := today.Format("2006-01")
 
 	var dailyConsumption db.DailyConsumption
-
 	err = connection.Where("domain = ? AND date = ?", domain, today).First(&dailyConsumption).Error
+
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
-			dailyConsumption = db.DailyConsumption{
+			newConsumption := db.DailyConsumption{
 				Domain:    domain,
 				Date:      today,
 				Month:     month,
 				BytesUsed: traffic,
 			}
-			if err = connection.Create(&dailyConsumption).Error; err != nil {
-				log.Printf("Error creating DailyConsumption: %v", err)
+			if createErr := connection.Create(&newConsumption).Error; createErr != nil {
+				log.Printf("Error creating DailyConsumption: %v", createErr)
 			}
 		} else {
 			log.Printf("Error querying DailyConsumption: %v", err)
@@ -44,8 +45,8 @@ func (tm *TrafficManager) updateDatabase(domain string, traffic int64) {
 		return
 	}
 
-	err = connection.Model(&dailyConsumption).Update("BytesUsed", dailyConsumption.BytesUsed+traffic).Error
-	if err != nil {
-		log.Printf("Error updating DailyConsumption: %v", err)
+	tx := connection.Model(&dailyConsumption).Update("bytes_used", gorm.Expr("bytes_used + ?", traffic))
+	if tx.Error != nil {
+		log.Printf("Error updating DailyConsumption: %v", tx.Error)
 	}
 }

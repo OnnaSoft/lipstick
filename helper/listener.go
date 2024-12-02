@@ -1,9 +1,12 @@
 package helper
 
 import (
+	"bufio"
+	"bytes"
 	"crypto/tls"
 	"errors"
 	"net"
+	"net/http"
 )
 
 func NewListenerManagerTCP(addr string, tlsConfig *tls.Config) *ListenerManager {
@@ -51,7 +54,7 @@ func (l *ListenerConn) Addr() net.Addr {
 type ListenerManager struct {
 	net.Listener
 	onClose    func()
-	onHTTPConn func(net.Conn)
+	onHTTPConn func(net.Conn, *http.Request)
 	onTCPConn  func(net.Conn)
 	onListen   func()
 }
@@ -68,7 +71,7 @@ func (l *ListenerManager) OnClose(fn func()) {
 	l.onClose = fn
 }
 
-func (l *ListenerManager) OnHTTPConn(fn func(net.Conn)) {
+func (l *ListenerManager) OnHTTPConn(fn func(net.Conn, *http.Request)) {
 	l.onHTTPConn = fn
 }
 
@@ -83,27 +86,55 @@ func (l *ListenerManager) ListenAndServe() error {
 	for {
 		conn, err := l.Accept()
 		if err != nil {
-			if l.onClose != nil {
-				l.onClose()
-			}
-			return err
+			return l.handleAcceptError(err)
 		}
 
-		buffer := make([]byte, 1024)
-		n, err := conn.Read(buffer)
-		if err != nil {
+		if err := l.handleConnection(conn); err != nil {
 			conn.Close()
 			continue
 		}
-		wconn := NewConnWithBuffer(conn, buffer[:n])
-		if IsHTTPRequest(string(buffer[:n])) {
-			if l.onHTTPConn != nil {
-				l.onHTTPConn(wconn)
-			}
-		} else {
-			if l.onTCPConn != nil {
-				l.onTCPConn(wconn)
-			}
-		}
 	}
+}
+
+func (l *ListenerManager) handleAcceptError(err error) error {
+	if l.onClose != nil {
+		l.onClose()
+	}
+	return err
+}
+
+func (l *ListenerManager) handleConnection(conn net.Conn) error {
+	buffer := make([]byte, 1024)
+	n, err := conn.Read(buffer)
+	if err != nil {
+		return err
+	}
+	wconn := NewConnWithBuffer(conn, buffer[:n])
+	if IsHTTPRequest(string(buffer[:n])) {
+		return l.handleHTTPConn(wconn)
+	}
+	return l.handleTCPConn(wconn)
+}
+
+func (l *ListenerManager) handleHTTPConn(conn *ConnWithBuffer) error {
+	if l.onHTTPConn != nil {
+		b, err := ReadUntilHeadersEnd(conn)
+		if err != nil {
+			return err
+		}
+		conn.SetBuffer(b)
+		req, err := http.ReadRequest(bufio.NewReader(bytes.NewBuffer(b)))
+		if err != nil {
+			return err
+		}
+		l.onHTTPConn(conn, req)
+	}
+	return nil
+}
+
+func (l *ListenerManager) handleTCPConn(conn net.Conn) error {
+	if l.onTCPConn != nil {
+		l.onTCPConn(conn)
+	}
+	return nil
 }

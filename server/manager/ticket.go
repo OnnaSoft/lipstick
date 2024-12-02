@@ -9,7 +9,7 @@ type TickerManager struct {
 func (tm *TickerManager) generate() string {
 	tm.value++
 
-	if tm.value > 99999999 {
+	if tm.value > 999_999_999 {
 		tm.value = 0
 	}
 

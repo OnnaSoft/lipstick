@@ -1,10 +1,13 @@
 package manager
 
 import (
+	"bufio"
 	"crypto/tls"
 	"fmt"
 	"log"
 	"net"
+	"net/http"
+	"strings"
 	"sync"
 
 	"github.com/OnnaSoft/lipstick/helper"
@@ -12,7 +15,6 @@ import (
 	"github.com/OnnaSoft/lipstick/server/config"
 	"github.com/OnnaSoft/lipstick/server/traffic"
 	"github.com/gin-gonic/gin"
-	"github.com/gorilla/websocket"
 )
 
 type request struct {
@@ -23,7 +25,19 @@ type request struct {
 type ProxyNotificationConn struct {
 	Domain                   string
 	AllowMultipleConnections bool
-	*websocket.Conn
+	*bufio.ReadWriter
+	conn net.Conn
+}
+
+func (p *ProxyNotificationConn) Write(b []byte) (int, error) {
+	p.ReadWriter.Write(b)
+	p.Flush()
+	return len(b), nil
+}
+
+func (p *ProxyNotificationConn) Close() error {
+	p.conn.Write([]byte("close"))
+	return p.conn.Close()
 }
 
 type Manager struct {
@@ -65,12 +79,9 @@ func (m *Manager) RemoveHub(domain string) {
 	m.hubs.Delete(domain)
 }
 
-func (manager *Manager) handleTunnel(conn net.Conn, ticket string) {
-	domainName, err := helper.GetDomainName(conn)
-	if err != nil {
-		log.Println("Unable to get domain name", err)
-		return
-	}
+func (manager *Manager) handleTunnel(conn net.Conn, req *http.Request, ticket string) {
+	host := req.Host
+	domainName := strings.Split(host, ":")[0]
 
 	domain, ok := manager.GetHub(domainName)
 	if !ok {
@@ -100,8 +111,24 @@ func (manager *Manager) Listen() {
 	}
 }
 
-func (manager *Manager) HandleHTTPConn(conn net.Conn) {
-	manager.HandleTCPConn(conn)
+func (manager *Manager) HandleHTTPConn(conn net.Conn, req *http.Request) {
+	host := req.Host
+	domain := strings.Split(host, ":")[0]
+
+	hub, ok := manager.GetHub(domain)
+	if !ok {
+		fmt.Println("Domain ", domain, " not found")
+		fmt.Fprint(conn, helper.BadGatewayResponse)
+		conn.Close()
+		return
+	}
+
+	if _, ok := conn.(helper.RemoteConn); ok {
+		hub.incomingClientConn <- conn.(*helper.RemoteConn)
+		return
+	}
+
+	hub.incomingClientConn <- &helper.RemoteConn{Conn: conn, Domain: domain}
 }
 
 func (manager *Manager) HandleTCPConn(conn net.Conn) {
@@ -113,7 +140,7 @@ func (manager *Manager) HandleTCPConn(conn net.Conn) {
 	}
 	hub, ok := manager.GetHub(domain)
 	if !ok {
-		fmt.Println("Domain not found")
+		fmt.Println("Domain ", domain, " not found")
 		fmt.Fprint(conn, helper.BadGatewayResponse)
 		conn.Close()
 		return

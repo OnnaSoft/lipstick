@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/tls"
 	"flag"
 	"fmt"
 	"net/http"
@@ -19,26 +20,30 @@ func main() {
 	flag.IntVar(&totalRequests, "requests", 10000, "Número total de peticiones")
 	flag.Parse()
 
-	concurrencyLimit := 50 // Número máximo de goroutines concurrentes
+	concurrencyLimit := 50
 
 	var wg sync.WaitGroup
 	concurrencyCh := make(chan struct{}, concurrencyLimit)
 
-	// Map para contar los códigos de estado
+	http.DefaultClient.Transport = &http.Transport{
+		MaxIdleConns:        100,
+		MaxIdleConnsPerHost: 100,
+		TLSClientConfig: &tls.Config{
+			InsecureSkipVerify: true,
+		},
+	}
+
 	statusCounts := make(map[int]int)
 	var statusMu sync.Mutex
 
-	// Contadores para estadísticas en tiempo real
 	var completedRequests int
 	var completedRequestsMu sync.Mutex
 
-	// Timer para mantener la tasa de solicitudes
 	ticker := time.NewTicker(time.Second / time.Duration(targetRate))
 	defer ticker.Stop()
 
 	startTime := time.Now()
 
-	// Goroutine para imprimir estadísticas cada segundo
 	go func() {
 		for range time.Tick(1 * time.Second) {
 			elapsed := time.Since(startTime).Seconds()
@@ -54,10 +59,8 @@ func main() {
 			}
 			statusMu.Unlock()
 
-			// Mover cursor al inicio y limpiar la consola
 			fmt.Printf("\033[H\033[J%s", stats)
 
-			// Salir del loop si todas las solicitudes están completadas
 			if reqs >= totalRequests {
 				break
 			}
@@ -65,30 +68,27 @@ func main() {
 	}()
 
 	for i := 0; i < totalRequests; i++ {
-		<-ticker.C // Espacia las solicitudes para mantener la tasa configurada
+		<-ticker.C
 
 		wg.Add(1)
 		go func(requestID int) {
 			defer wg.Done()
 
-			// Adquiere un slot en el limitador de concurrencia
 			concurrencyCh <- struct{}{}
 			defer func() { <-concurrencyCh }()
 
 			resp, err := http.Get(url)
 			if err != nil {
 				fmt.Printf("\nError en la solicitud #%d: %v\n", requestID, err)
-				os.Exit(1) // Salir del programa si hay un error
+				os.Exit(1)
 				return
 			}
 			defer resp.Body.Close()
 
-			// Contar los códigos de estado
 			statusMu.Lock()
 			statusCounts[resp.StatusCode]++
 			statusMu.Unlock()
 
-			// Incrementar el contador de solicitudes completadas
 			completedRequestsMu.Lock()
 			completedRequests++
 			completedRequestsMu.Unlock()
@@ -97,7 +97,6 @@ func main() {
 
 	wg.Wait()
 
-	// Estadísticas finales
 	elapsedTime := time.Since(startTime)
 	actualRate := float64(totalRequests) / elapsedTime.Seconds()
 
@@ -105,7 +104,6 @@ func main() {
 	fmt.Printf("Tiempo total: %s\n", elapsedTime)
 	fmt.Printf("Peticiones por segundo: %.2f\n", actualRate)
 
-	// Imprimir estadísticas de códigos de estado finales
 	fmt.Println("Códigos de estado:")
 	for statusCode, count := range statusCounts {
 		fmt.Printf("  %d: %d\n", statusCode, count)

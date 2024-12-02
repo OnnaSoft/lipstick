@@ -47,8 +47,8 @@ func main() {
 	proxy.OnTCPConn(func(c net.Conn) {
 		go manager.HandleTCPConn(c)
 	})
-	proxy.OnHTTPConn(func(c net.Conn) {
-		go manager.HandleHTTPConn(c)
+	proxy.OnHTTPConn(func(c net.Conn, req *http.Request) {
+		go manager.HandleHTTPConn(c, req)
 	})
 
 	go manager.Listen()
