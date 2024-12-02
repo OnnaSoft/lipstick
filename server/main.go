@@ -11,6 +11,7 @@ import (
 	_ "net/http/pprof"
 
 	"github.com/OnnaSoft/lipstick/helper"
+	"github.com/OnnaSoft/lipstick/logger"
 	"github.com/OnnaSoft/lipstick/server/admin"
 	"github.com/OnnaSoft/lipstick/server/config"
 	"github.com/OnnaSoft/lipstick/server/db"
@@ -42,8 +43,8 @@ func main() {
 	manager := manager.SetupManager(tlsConfig)
 	admin := admin.SetupAdmin(conf.Admin.Address)
 
-	proxy.OnListen(func() { log.Println("Listening login on", conf.Proxy.Address) })
-	proxy.OnClose(func() { log.Println("Proxy closed") })
+	proxy.OnListen(func() { logger.Default.Info("Listening proxy on ", conf.Proxy.Address) })
+	proxy.OnClose(func() { logger.Default.Info("Proxy closed") })
 	proxy.OnTCPConn(func(c net.Conn) {
 		go manager.HandleTCPConn(c)
 	})

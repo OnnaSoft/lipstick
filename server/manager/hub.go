@@ -1,13 +1,12 @@
 package manager
 
 import (
-	"fmt"
-	"io"
 	"net"
 	"sync"
 	"time"
 
 	"github.com/OnnaSoft/lipstick/helper"
+	"github.com/OnnaSoft/lipstick/logger"
 	"github.com/OnnaSoft/lipstick/server/traffic"
 )
 
@@ -51,13 +50,46 @@ func (hub *NetworkHub) syncConnections(pipe net.Conn, destination net.Conn) {
 	defer pipe.Close()
 	defer destination.Close()
 
+	var originToDest int64
+	var destToOrigin int64
+
 	go func() {
-		written, _ := io.Copy(destination, pipe)
-		hub.addDataUsage(written)
+		buffer := make([]byte, 4096)
+		for {
+			n, err := pipe.Read(buffer)
+			if err != nil {
+				break
+			}
+			written, err := destination.Write(buffer[:n])
+			if err != nil {
+				break
+			}
+			originToDest += int64(written)
+			hub.addDataUsage(int64(written))
+		}
+		logger.Default.Debug("Finished transferring from origin to destination, total bytes:", originToDest)
 	}()
 
-	written, _ := io.Copy(pipe, destination)
-	hub.addDataUsage(written)
+	buffer := make([]byte, 4096)
+	for {
+		n, err := destination.Read(buffer)
+		if err != nil {
+			break
+		}
+		written, err := pipe.Write(buffer[:n])
+		if err != nil {
+			break
+		}
+		destToOrigin += int64(written)
+		hub.addDataUsage(int64(written))
+	}
+	logger.Default.Debug("Finished transferring from destination to origin, total bytes:", destToOrigin)
+
+	logger.Default.Debug("Connection data usage:",
+		"origin → destination:", originToDest, "bytes,",
+		"destination → origin:", destToOrigin, "bytes",
+		"Hub:", hub.HubName,
+	)
 }
 
 func (hub *NetworkHub) addDataUsage(bytes int64) {
@@ -71,6 +103,7 @@ func (hub *NetworkHub) addDataUsage(bytes int64) {
 		hub.trafficManager.AddTraffic(hub.HubName, hub.dataUsageAccumulator)
 		hub.dataUsageAccumulator = 0
 	}
+	logger.Default.Debug("Data usage updated for hub:", hub.HubName, "Total transferred:", hub.totalDataTransferred)
 }
 
 func (hub *NetworkHub) listen() {
@@ -94,14 +127,13 @@ func (hub *NetworkHub) listen() {
 
 func (hub *NetworkHub) handleRegisterProxyNotificationConn(conn *ProxyNotificationConn) {
 	if !conn.AllowMultipleConnections && len(hub.ProxyNotificationConns) > 0 {
+		logger.Default.Error("Connection rejected: multiple connections not allowed for hub:", hub.HubName)
 		conn.Close()
 		return
 	}
-	if hub.ProxyNotificationConns == nil {
-		hub.ProxyNotificationConns = make(map[*ProxyNotificationConn]bool)
-	}
 	hub.ProxyNotificationConns[conn] = true
-	conn.conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+	//conn.conn.SetWriteDeadline(time.Now().Add(60 * time.Second))
+	logger.Default.Debug("ProxyNotificationConn registered for hub:", hub.HubName)
 	go hub.checkConnection(conn)
 }
 
@@ -110,9 +142,9 @@ func (hub *NetworkHub) handleUnregisterProxyNotificationConn(ws *ProxyNotificati
 		ws.Write([]byte("close"))
 		ws.Close()
 	}()
-	connections := hub.ProxyNotificationConns
-	if connections[ws] {
-		delete(connections, ws)
+	if _, exists := hub.ProxyNotificationConns[ws]; exists {
+		delete(hub.ProxyNotificationConns, ws)
+		logger.Default.Debug("ProxyNotificationConn unregistered for hub:", hub.HubName)
 	}
 }
 
@@ -120,17 +152,20 @@ func (hub *NetworkHub) handleServerRequest(request *request) {
 	destination := request.conn
 	pipe, exists := hub.incomingClientConns[request.ticket]
 	if !exists {
-		fmt.Fprint(destination, helper.BadGatewayResponse)
+		logger.Default.Error("Invalid ticket for hub:", hub.HubName, "Ticket:", request.ticket)
+		_, _ = destination.Write([]byte(helper.BadGatewayResponse))
 		destination.Close()
 		return
 	}
 	delete(hub.incomingClientConns, request.ticket)
+	logger.Default.Debug("Server request handled for ticket:", request.ticket, "Hub:", hub.HubName)
 	go hub.syncConnections(pipe, destination)
 }
 
 func (hub *NetworkHub) handleIncomingClientConn(remoteConn *helper.RemoteConn) {
 	if len(hub.ProxyNotificationConns) == 0 {
-		fmt.Fprint(remoteConn, helper.BadGatewayResponse)
+		logger.Default.Error("No ProxyNotificationConns available for hub:", hub.HubName)
+		_, _ = remoteConn.Write([]byte(helper.BadGatewayResponse))
 		remoteConn.Close()
 		return
 	}
@@ -148,11 +183,12 @@ func (hub *NetworkHub) handleIncomingClientConn(remoteConn *helper.RemoteConn) {
 	hub.incomingClientConns[ticket] = remoteConn
 	_, err := ws.Write([]byte(ticket))
 	if err != nil {
-		fmt.Fprint(remoteConn, helper.BadGatewayResponse)
+		logger.Default.Error("Error writing ticket to ProxyNotificationConn:", err)
+		_, _ = remoteConn.Write([]byte(helper.BadGatewayResponse))
 		remoteConn.Close()
 		delete(hub.incomingClientConns, ticket)
-		fmt.Println("Error writing to ws")
 	}
+	logger.Default.Debug("Ticket sent to ProxyNotificationConn for hub:", hub.HubName, "Ticket:", ticket)
 }
 
 func (hub *NetworkHub) handleShutdown(shutdownComplete chan struct{}) {
@@ -161,18 +197,20 @@ func (hub *NetworkHub) handleShutdown(shutdownComplete chan struct{}) {
 	close(hub.incomingClientConn)
 	close(hub.serverRequests)
 	close(hub.shutdownSignal)
+	logger.Default.Info("Shutdown completed for hub:", hub.HubName)
 	shutdownComplete <- struct{}{}
 }
 
 func (h *NetworkHub) checkConnection(connection *ProxyNotificationConn) {
 	defer func() {
 		h.unregisterProxyNotificationConn <- connection
-		fmt.Println("Connection closed")
+		logger.Default.Debug("Connection closed for ProxyNotificationConn in hub:", h.HubName)
 	}()
 	for {
 		b := make([]byte, 16)
-		_, err := connection.Read(b)
+		_, err := connection.conn.Read(b)
 		if err != nil {
+			logger.Default.Error("Error reading from ProxyNotificationConn:", err)
 			break
 		}
 	}

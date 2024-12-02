@@ -80,7 +80,7 @@ func checkConnection(connection io.ReadWriter) {
 	}
 }
 func readMessage(reader *bufio.Reader) (string, error) {
-	buffer := make([]byte, 10)
+	buffer := make([]byte, 16)
 	n, err := reader.Read(buffer)
 	if err != nil {
 		return "", fmt.Errorf("error reading data: %w", err)
@@ -107,8 +107,6 @@ func handleTickets(connection net.Conn, proxyTarget string) {
 		if err != nil {
 			return
 		}
-
-		fmt.Println("Received ticket", ticket)
 
 		if len(ticket) > 0 {
 			protocol, targetAddress := helper.ParseTargetEndpoint(proxyTarget)
