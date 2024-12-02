@@ -158,8 +158,11 @@ func (hub *NetworkHub) handleServerRequest(request *request) {
 	destination := request.conn
 	pipe, exists := hub.incomingClientConns[request.ticket]
 	if !exists {
+		for key := range hub.incomingClientConns {
+			fmt.Println(key)
+		}
 		logger.Default.Error("Invalid ticket for hub:", hub.HubName, "Ticket:", request.ticket)
-		_, _ = destination.Write([]byte(helper.BadGatewayResponse))
+		destination.Write([]byte(helper.BadGatewayResponse))
 		destination.Close()
 		return
 	}
@@ -187,7 +190,7 @@ func (hub *NetworkHub) handleIncomingClientConn(remoteConn *helper.RemoteConn) {
 	}
 	ticket := hub.tickerManager.generate()
 	hub.incomingClientConns[ticket] = remoteConn
-	_, err := ws.Write([]byte(ticket))
+	_, err := ws.Write([]byte(ticket + "\n"))
 	if err != nil {
 		logger.Default.Error("Error writing ticket to ProxyNotificationConn:", err)
 		_, _ = remoteConn.Write([]byte(helper.BadGatewayResponse))

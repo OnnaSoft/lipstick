@@ -80,13 +80,11 @@ func checkConnection(connection io.ReadWriter) {
 	}
 }
 func readMessage(reader *bufio.Reader) (string, error) {
-	buffer := make([]byte, 16)
-	n, err := reader.Read(buffer)
+	line, err := reader.ReadString('\n')
 	if err != nil {
-		return "", fmt.Errorf("error reading data: %w", err)
+		return "", fmt.Errorf("error reading until newline: %w", err)
 	}
-
-	data := string(buffer[:n])
+	data := line[:len(line)-1]
 	if data == "close" {
 		fmt.Println("Connection closed by server")
 		return "", fmt.Errorf("connection closed by server")
