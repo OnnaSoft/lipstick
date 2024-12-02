@@ -124,7 +124,7 @@ func (manager *Manager) Listen() {
 		return
 	}
 
-	logger.Default.Info("Listening manager on", config.Manager.Address)
+	logger.Default.Info("Listening manager on ", config.Manager.Address)
 
 	var listener net.Listener
 	if manager.tlsConfig != nil {

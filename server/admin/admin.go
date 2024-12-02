@@ -26,6 +26,6 @@ func SetupAdmin(addr string) *Admin {
 }
 
 func (a *Admin) Listen() {
-	logger.Default.Info("Listening admin on", a.addr)
+	logger.Default.Info("Listening admin on ", a.addr)
 	a.engine.Run(a.addr)
 }
