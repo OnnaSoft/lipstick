@@ -219,7 +219,7 @@ func (h *NetworkHub) checkConnection(connection *ProxyNotificationConn) {
 		b := make([]byte, 16)
 		_, err := connection.conn.Read(b)
 		if err != nil {
-			logger.Default.Error("Error reading from ProxyNotificationConn:", err)
+			logger.Default.Debug("Error reading from ProxyNotificationConn:", err)
 			break
 		}
 	}

@@ -46,7 +46,7 @@ func (p *ProxyNotificationConn) Write(b []byte) (int, error) {
 func (p *ProxyNotificationConn) Close() error {
 	_, err := p.conn.Write([]byte("close"))
 	if err != nil {
-		logger.Default.Error("Error writing 'close' to connection:", err)
+		logger.Default.Debug("Error writing 'close' to connection:", err)
 	}
 	closeErr := p.conn.Close()
 	if closeErr != nil {
