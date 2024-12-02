@@ -1,6 +1,7 @@
 package manager
 
 import (
+	"fmt"
 	"net"
 	"sync"
 	"time"
@@ -146,6 +147,12 @@ func (hub *NetworkHub) handleUnregisterProxyNotificationConn(ws *ProxyNotificati
 		delete(hub.ProxyNotificationConns, ws)
 		logger.Default.Debug("ProxyNotificationConn unregistered for hub:", hub.HubName)
 	}
+	for ticket, conn := range hub.incomingClientConns {
+		delete(hub.incomingClientConns, ticket)
+		fmt.Fprintf(conn, helper.BadGatewayResponse)
+		conn.Close()
+		logger.Default.Debug("Incoming client connection unregistered for hub:", hub.HubName)
+	}
 }
 
 func (hub *NetworkHub) handleServerRequest(request *request) {
@@ -204,7 +211,7 @@ func (hub *NetworkHub) handleShutdown(shutdownComplete chan struct{}) {
 func (h *NetworkHub) checkConnection(connection *ProxyNotificationConn) {
 	defer func() {
 		h.unregisterProxyNotificationConn <- connection
-		logger.Default.Debug("Connection closed for ProxyNotificationConn in hub:", h.HubName)
+		logger.Default.Info("Connection closed for ProxyNotificationConn in hub:", h.HubName)
 	}()
 	for {
 		b := make([]byte, 16)
