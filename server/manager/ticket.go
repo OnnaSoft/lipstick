@@ -1,17 +1,20 @@
 package manager
 
-import "strconv"
+import (
+	"math"
+	"strconv"
+)
 
 type TickerManager struct {
-	value int
+	value uint64
 }
 
 func (tm *TickerManager) generate() string {
 	tm.value++
 
-	if tm.value > 999_999_999 {
+	if tm.value > math.MaxUint64 {
 		tm.value = 0
 	}
 
-	return strconv.Itoa(tm.value)
+	return strconv.FormatUint(tm.value, 10)
 }
