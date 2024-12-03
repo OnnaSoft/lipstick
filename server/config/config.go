@@ -61,6 +61,14 @@ type RedisConfig struct {
 	PoolTimeout  int    `yaml:"pool_timeout"`
 }
 
+type RabbitMQConfig struct {
+	Host     string `yaml:"host"`
+	Port     int    `yaml:"port"`
+	User     string `yaml:"user"`
+	Password string `yaml:"password"`
+	VHost    string `yaml:"vhost"`
+}
+
 type AppConfig struct {
 	AdminSecretKey string         `yaml:"admin_secret_key"`
 	Proxy          ProxyConfig    `yaml:"proxy"`
@@ -69,6 +77,7 @@ type AppConfig struct {
 	TLS            TLSConfig      `yaml:"tls"`
 	Database       DatabaseConfig `yaml:"database"`
 	Redis          RedisConfig    `yaml:"redis"`
+	RabbitMQ       RabbitMQConfig `yaml:"rabbitmq"`
 }
 
 var appConfig AppConfig
@@ -76,8 +85,8 @@ var appConfig AppConfig
 func loadConfig() {
 	var configPath string
 	var adminAddress, managerAddress, proxyAddress, adminSecretKey, tlsCert, tlsKey string
-	var redisHost, redisPassword string
-	var redisPort, redisDatabase, redisPoolSize, redisMinIdleConns, redisPoolTimeout int
+	var redisHost, redisPassword, rabbitMQHost, rabbitMQUser, rabbitMQPassword, rabbitMQVHost string
+	var redisPort, redisDatabase, redisPoolSize, redisMinIdleConns, redisPoolTimeout, rabbitMQPort int
 	var dbHost, dbUser, dbPassword, dbName, dbSSLMode string
 	var dbPort int
 
@@ -107,6 +116,13 @@ func loadConfig() {
 			Database: "app_db",
 			SSLMode:  "disable",
 		},
+		RabbitMQ: RabbitMQConfig{
+			Host:     "localhost",
+			Port:     5672,
+			User:     "guest",
+			Password: "guest",
+			VHost:    "/",
+		},
 	}
 
 	flag.StringVar(&configPath, "c", "/etc/lipstick/config.yml", "Path to the configuration file")
@@ -123,6 +139,11 @@ func loadConfig() {
 	flag.IntVar(&redisPoolSize, "redis-pool-size", 0, "Redis pool size")
 	flag.IntVar(&redisMinIdleConns, "redis-min-idle-conns", 0, "Redis minimum idle connections")
 	flag.IntVar(&redisPoolTimeout, "redis-pool-timeout", 0, "Redis pool timeout in seconds")
+	flag.StringVar(&rabbitMQHost, "rabbitmq-host", "", "RabbitMQ host")
+	flag.IntVar(&rabbitMQPort, "rabbitmq-port", 0, "RabbitMQ port")
+	flag.StringVar(&rabbitMQUser, "rabbitmq-user", "", "RabbitMQ user")
+	flag.StringVar(&rabbitMQPassword, "rabbitmq-password", "", "RabbitMQ password")
+	flag.StringVar(&rabbitMQVHost, "rabbitmq-vhost", "", "RabbitMQ virtual host")
 	flag.StringVar(&dbHost, "db-host", "", "Database host")
 	flag.IntVar(&dbPort, "db-port", 0, "Database port")
 	flag.StringVar(&dbUser, "db-user", "", "Database user")
@@ -144,50 +165,11 @@ func loadConfig() {
 		}
 	}
 
-	if defaultConfig.AdminSecretKey != "" {
-		appConfig = defaultConfig
-		return
-	}
-
-	adminAddress = setValue(adminAddress, os.Getenv("ADMIN_ADDR")).(string)
-	managerAddress = setValue(managerAddress, os.Getenv("MANAGER_ADDR")).(string)
-	proxyAddress = setValue(proxyAddress, os.Getenv("PROXY_ADDR")).(string)
-	adminSecretKey = setValue(adminSecretKey, os.Getenv("ADMIN_SECRET_KEY")).(string)
-	tlsCert = setValue(tlsCert, os.Getenv("TLS_CERT")).(string)
-	tlsKey = setValue(tlsKey, os.Getenv("TLS_KEY")).(string)
-	redisHost = setValue(redisHost, os.Getenv("REDIS_HOST")).(string)
-	redisPort = setValue(redisPort, parseEnvInt("REDIS_PORT", redisPort)).(int)
-	redisPassword = setValue(redisPassword, os.Getenv("REDIS_PASSWORD")).(string)
-	redisDatabase = setValue(redisDatabase, parseEnvInt("REDIS_DB", redisDatabase)).(int)
-	redisPoolSize = setValue(redisPoolSize, parseEnvInt("REDIS_POOL_SIZE", redisPoolSize)).(int)
-	redisMinIdleConns = setValue(redisMinIdleConns, parseEnvInt("REDIS_MIN_IDLE_CONNS", redisMinIdleConns)).(int)
-	redisPoolTimeout = setValue(redisPoolTimeout, parseEnvInt("REDIS_POOL_TIMEOUT", redisPoolTimeout)).(int)
-	dbHost = setValue(dbHost, os.Getenv("DB_HOST")).(string)
-	dbPort = setValue(dbPort, parseEnvInt("DB_PORT", dbPort)).(int)
-	dbUser = setValue(dbUser, os.Getenv("DB_USER")).(string)
-	dbPassword = setValue(dbPassword, os.Getenv("DB_PASSWORD")).(string)
-	dbName = setValue(dbName, os.Getenv("DB_NAME")).(string)
-	dbSSLMode = setValue(dbSSLMode, os.Getenv("DB_SSL_MODE")).(string)
-
-	defaultConfig.Admin.Address = adminAddress
-	defaultConfig.Manager.Address = managerAddress
-	defaultConfig.Proxy.Address = proxyAddress
-	defaultConfig.AdminSecretKey = adminSecretKey
-	defaultConfig.TLS.CertificatePath = tlsCert
-	defaultConfig.TLS.KeyPath = tlsKey
-	defaultConfig.Redis.Host = redisHost
-	defaultConfig.Redis.Port = redisPort
-	defaultConfig.Redis.Password = redisPassword
-	defaultConfig.Redis.Database = redisDatabase
-	defaultConfig.Redis.PoolSize = redisPoolSize
-	defaultConfig.Redis.MinIdleConns = redisMinIdleConns
-	defaultConfig.Redis.PoolTimeout = redisPoolTimeout
-	defaultConfig.Database.Host = dbHost
-	defaultConfig.Database.Port = dbPort
-	defaultConfig.Database.User = dbUser
-	defaultConfig.Database.Password = dbPassword
-	defaultConfig.Database.Database = dbName
-	defaultConfig.Database.SSLMode = dbSSLMode
+	defaultConfig.RabbitMQ.Host = setValue(rabbitMQHost, os.Getenv("RABBITMQ_HOST")).(string)
+	defaultConfig.RabbitMQ.Port = setValue(rabbitMQPort, parseEnvInt("RABBITMQ_PORT", rabbitMQPort)).(int)
+	defaultConfig.RabbitMQ.User = setValue(rabbitMQUser, os.Getenv("RABBITMQ_USER")).(string)
+	defaultConfig.RabbitMQ.Password = setValue(rabbitMQPassword, os.Getenv("RABBITMQ_PASSWORD")).(string)
+	defaultConfig.RabbitMQ.VHost = setValue(rabbitMQVHost, os.Getenv("RABBITMQ_VHOST")).(string)
 
 	appConfig = defaultConfig
 }
