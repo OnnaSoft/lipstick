@@ -61,14 +61,6 @@ type RedisConfig struct {
 	PoolTimeout  int    `yaml:"pool_timeout"`
 }
 
-type RabbitMQConfig struct {
-	Host     string `yaml:"host"`
-	Port     int    `yaml:"port"`
-	User     string `yaml:"user"`
-	Password string `yaml:"password"`
-	VHost    string `yaml:"vhost"`
-}
-
 type AppConfig struct {
 	AdminSecretKey string         `yaml:"admin_secret_key"`
 	Proxy          ProxyConfig    `yaml:"proxy"`
@@ -77,7 +69,6 @@ type AppConfig struct {
 	TLS            TLSConfig      `yaml:"tls"`
 	Database       DatabaseConfig `yaml:"database"`
 	Redis          RedisConfig    `yaml:"redis"`
-	RabbitMQ       RabbitMQConfig `yaml:"rabbitmq"`
 }
 
 var appConfig AppConfig
@@ -115,13 +106,6 @@ func loadConfig() {
 			Password: "",
 			Database: "app_db",
 			SSLMode:  "disable",
-		},
-		RabbitMQ: RabbitMQConfig{
-			Host:     "localhost",
-			Port:     5672,
-			User:     "guest",
-			Password: "guest",
-			VHost:    "/",
 		},
 	}
 
@@ -164,12 +148,6 @@ func loadConfig() {
 			}
 		}
 	}
-
-	defaultConfig.RabbitMQ.Host = setValue(rabbitMQHost, os.Getenv("RABBITMQ_HOST")).(string)
-	defaultConfig.RabbitMQ.Port = setValue(rabbitMQPort, parseEnvInt("RABBITMQ_PORT", rabbitMQPort)).(int)
-	defaultConfig.RabbitMQ.User = setValue(rabbitMQUser, os.Getenv("RABBITMQ_USER")).(string)
-	defaultConfig.RabbitMQ.Password = setValue(rabbitMQPassword, os.Getenv("RABBITMQ_PASSWORD")).(string)
-	defaultConfig.RabbitMQ.VHost = setValue(rabbitMQVHost, os.Getenv("RABBITMQ_VHOST")).(string)
 
 	appConfig = defaultConfig
 }

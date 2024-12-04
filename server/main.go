@@ -16,7 +16,6 @@ import (
 	"github.com/OnnaSoft/lipstick/server/config"
 	"github.com/OnnaSoft/lipstick/server/db"
 	"github.com/OnnaSoft/lipstick/server/manager"
-	"github.com/OnnaSoft/lipstick/server/subscriptions"
 )
 
 func main() {
@@ -37,7 +36,6 @@ func main() {
 	signal.Notify(interrupt, os.Interrupt)
 
 	db.Migrate(conf.Database)
-	subscriptions.GetRabbitMQManager(conf.RabbitMQ)
 
 	tlsConfig := conf.TLS.GetTLSConfig()
 

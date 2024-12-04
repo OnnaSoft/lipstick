@@ -13,7 +13,6 @@ import (
 	"github.com/OnnaSoft/lipstick/logger"
 	"github.com/OnnaSoft/lipstick/server/auth"
 	"github.com/OnnaSoft/lipstick/server/config"
-	"github.com/OnnaSoft/lipstick/server/subscriptions"
 	"github.com/OnnaSoft/lipstick/server/traffic"
 	"github.com/gin-gonic/gin"
 )
@@ -64,7 +63,6 @@ type Manager struct {
 	hubs           sync.Map
 	trafficManager *traffic.TrafficManager
 	authManager    auth.AuthManager
-	subscriptions  *subscriptions.RabbitMQManager
 	tlsConfig      *tls.Config
 }
 
