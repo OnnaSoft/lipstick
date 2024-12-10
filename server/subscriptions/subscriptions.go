@@ -37,7 +37,6 @@ func NewSubscriptionManager(url string) (*SubscriptionManager, error) {
 		return nil, fmt.Errorf("error connecting to NATS: %v", err)
 	}
 
-	logger.Default.Info("Connected to NATS:", url)
 	return &SubscriptionManager{conn: conn}, nil
 }
 
