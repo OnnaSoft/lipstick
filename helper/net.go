@@ -1,7 +1,6 @@
 package helper
 
 import (
-	"log"
 	"net"
 	"sync"
 	"time"
@@ -26,20 +25,15 @@ func (c *RemoteConn) Write(b []byte) (n int, err error) {
 	return c.Conn.Write(b)
 }
 
-func MonitorIdle(c *RemoteConn, timeout time.Duration) {
+func (c *RemoteConn) MonitorIdle(timeout time.Duration) {
 	go func() {
-		ticker := time.NewTicker(1 * time.Second)
+		ticker := time.NewTicker(timeout)
 		defer ticker.Stop()
 
-		for range ticker.C {
-			if !c.used {
-				c.closeOnce.Do(func() {
-					log.Printf("Closing idle connection to domain: %s", c.Domain)
-					c.Conn.Close()
-				})
-				return
-			}
-			c.used = false // Resetea el estado usado para la próxima verificación
+		<-ticker.C
+		if !c.used {
+			logger.Default.Debug("Closing connection to ", c.Domain)
+			c.Close()
 		}
 	}()
 }
@@ -69,6 +63,10 @@ func (c *ConnWithBuffer) Read(b []byte) (n int, err error) {
 		return n, nil
 	}
 	return c.Conn.Read(b)
+}
+
+func (c *ConnWithBuffer) Close() error {
+	return c.Conn.Close()
 }
 
 var publicIP string

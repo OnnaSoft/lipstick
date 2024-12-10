@@ -58,7 +58,7 @@ func (hub *NetworkHub) syncConnections(pipe net.Conn, destination net.Conn) {
 	var destToOrigin int64
 
 	go func() {
-		buffer := make([]byte, 4096)
+		buffer := make([]byte, 1024)
 		for {
 			n, err := pipe.Read(buffer)
 			if err != nil {
@@ -74,7 +74,7 @@ func (hub *NetworkHub) syncConnections(pipe net.Conn, destination net.Conn) {
 		logger.Default.Debug("Finished transferring from origin to destination, total bytes:", originToDest)
 	}()
 
-	buffer := make([]byte, 4096)
+	buffer := make([]byte, 1024)
 	for {
 		n, err := destination.Read(buffer)
 		if err != nil {
@@ -312,8 +312,8 @@ func (h *NetworkHub) checkConnection(connection *ProxyNotificationConn) {
 		h.unregisterProxyNotificationConn <- connection
 		logger.Default.Info("Connection closed for ProxyNotificationConn in hub:", h.HubName)
 	}()
+	b := make([]byte, 16)
 	for {
-		b := make([]byte, 16)
 		_, err := connection.conn.Read(b)
 		if err != nil {
 			logger.Default.Debug("Error reading from ProxyNotificationConn:", err)

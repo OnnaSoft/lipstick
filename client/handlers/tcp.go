@@ -25,8 +25,8 @@ func HandleTCP(connection net.Conn, proxyTarget, protocol string) {
 	defer serverConnection.Close()
 
 	go func() {
+		buffer := make([]byte, 1024)
 		for {
-			buffer := make([]byte, 1024)
 			n, err := serverConnection.Read(buffer)
 			if err != nil {
 				break

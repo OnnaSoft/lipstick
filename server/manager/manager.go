@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/OnnaSoft/lipstick/helper"
 	"github.com/OnnaSoft/lipstick/logger"
@@ -165,7 +166,9 @@ func (manager *Manager) HandleHTTPConn(conn net.Conn, req *http.Request) {
 		return
 	}
 
-	hub.incomingClientConn <- &helper.RemoteConn{Conn: conn, Domain: domain}
+	remoteConn := &helper.RemoteConn{Conn: conn, Domain: domain}
+	remoteConn.MonitorIdle(30 * time.Second)
+	hub.incomingClientConn <- remoteConn
 }
 
 func (manager *Manager) HandleTCPConn(conn net.Conn) {
@@ -197,5 +200,7 @@ func (manager *Manager) HandleTCPConn(conn net.Conn) {
 		return
 	}
 
-	hub.incomingClientConn <- &helper.RemoteConn{Conn: conn, Domain: domain}
+	remoteConn := &helper.RemoteConn{Conn: conn, Domain: domain}
+	remoteConn.MonitorIdle(30 * time.Second)
+	hub.incomingClientConn <- remoteConn
 }
