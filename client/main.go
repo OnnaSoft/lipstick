@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"time"
 
 	"github.com/OnnaSoft/lipstick/client/config"
@@ -79,18 +80,20 @@ func checkConnection(connection io.ReadWriter) {
 		time.Sleep(30 * time.Second)
 	}
 }
-func readMessage(reader *bufio.Reader) (string, error) {
+func readMessage(reader *bufio.Reader) (string, string, error) {
 	line, err := reader.ReadString('\n')
 	if err != nil {
-		return "", fmt.Errorf("error reading until newline: %w", err)
+		return "", "", fmt.Errorf("error reading until newline: %w", err)
 	}
-	data := line[:len(line)-1]
-	if data == "close" {
+	line = line[:len(line)-1]
+	if line == "close" {
 		fmt.Println("Connection closed by server")
-		return "", fmt.Errorf("connection closed by server")
+		return "", "", fmt.Errorf("connection closed by server")
 	}
 
-	return data, nil
+	data := strings.Split(line, ":")
+
+	return data[0], data[1], nil
 }
 
 func handleTickets(connection net.Conn, proxyTarget string) {
@@ -101,25 +104,25 @@ func handleTickets(connection net.Conn, proxyTarget string) {
 
 	reader := bufio.NewReader(connection)
 	for {
-		ticket, err := readMessage(reader)
+		addr, ticket, err := readMessage(reader)
 		if err != nil {
 			return
 		}
 
 		if len(ticket) > 0 {
 			protocol, targetAddress := helper.ParseTargetEndpoint(proxyTarget)
-			go establishConnection(protocol, targetAddress, string(ticket))
+			go establishConnection(protocol, addr, targetAddress, string(ticket))
 		}
 	}
 }
 
-func establishConnection(protocol, proxyTarget, uuid string) {
+func establishConnection(protocol, addr, proxyTarget, uuid string) {
 	defer func() {
 		recover()
 	}()
 	url := serverURL + "/" + uuid
 
-	connection, err := httpmanager.Connect(url, nil)
+	connection, err := httpmanager.ConnectByAddress(addr, url, nil)
 	if err != nil {
 		fmt.Fprintf(connection, helper.BadGatewayResponse)
 		return

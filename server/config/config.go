@@ -24,6 +24,10 @@ type AdminConfig struct {
 	Address string `yaml:"address"`
 }
 
+type NatsConfig struct {
+	URL string `yaml:"url"`
+}
+
 type TLSConfig struct {
 	CertificatePath string `yaml:"certificate_path"`
 	KeyPath         string `yaml:"key_path"`
@@ -69,6 +73,7 @@ type AppConfig struct {
 	TLS            TLSConfig      `yaml:"tls"`
 	Database       DatabaseConfig `yaml:"database"`
 	Redis          RedisConfig    `yaml:"redis"`
+	Nats           NatsConfig     `yaml:"nats"`
 }
 
 var appConfig AppConfig
@@ -80,6 +85,7 @@ func loadConfig() {
 	var redisPort, redisDatabase, redisPoolSize, redisMinIdleConns, redisPoolTimeout, rabbitMQPort int
 	var dbHost, dbUser, dbPassword, dbName, dbSSLMode string
 	var dbPort int
+	var natsURL string
 
 	defaultConfig := AppConfig{
 		Admin: AdminConfig{
@@ -106,6 +112,9 @@ func loadConfig() {
 			Password: "",
 			Database: "app_db",
 			SSLMode:  "disable",
+		},
+		Nats: NatsConfig{
+			URL: "nats://localhost:4222",
 		},
 	}
 
@@ -134,6 +143,7 @@ func loadConfig() {
 	flag.StringVar(&dbPassword, "db-password", "", "Database password")
 	flag.StringVar(&dbName, "db-name", "", "Database name")
 	flag.StringVar(&dbSSLMode, "db-ssl-mode", "", "Database SSL mode")
+	flag.StringVar(&natsURL, "nats-url", "", "NATS URL")
 
 	flag.Parse()
 

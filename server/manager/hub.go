@@ -8,7 +8,9 @@ import (
 
 	"github.com/OnnaSoft/lipstick/helper"
 	"github.com/OnnaSoft/lipstick/logger"
+	"github.com/OnnaSoft/lipstick/server/subscriptions"
 	"github.com/OnnaSoft/lipstick/server/traffic"
+	"github.com/nats-io/nats.go"
 )
 
 var rng = helper.NewXORShift(uint32(time.Now().UnixNano()))
@@ -28,6 +30,7 @@ type NetworkHub struct {
 	totalDataTransferred            int64
 	tickerManager                   *TickerManager
 	shutdownSignal                  chan struct{}
+	subscription                    *nats.Subscription
 }
 
 func NewNetworkHub(name string, trafficManager *traffic.TrafficManager, threshold int64) *NetworkHub {
@@ -132,6 +135,40 @@ func (hub *NetworkHub) handleRegisterProxyNotificationConn(conn *ProxyNotificati
 		conn.Close()
 		return
 	}
+
+	if hub.subscription == nil {
+		mgr, err := subscriptions.GetSubscriptionManager()
+		if err != nil {
+			logger.Default.Error("Error getting SubscriptionManager: " + err.Error())
+			conn.Close()
+			return
+		}
+
+		sub, err := mgr.Subscribe(hub.HubName, func(message *nats.Msg) {
+			msg := string(message.Data)
+
+			ws := hub.getProxyNotificationConn()
+			if ws == nil {
+				logger.Default.Error("No ProxyNotificationConns available for hub: ", hub.HubName)
+				return
+			}
+
+			_, err := ws.Write([]byte(msg + "\n"))
+			if err != nil {
+				logger.Default.Error("Error writing ticket to ProxyNotificationConn: ", err)
+			}
+			logger.Default.Debug("Ticket sent to ProxyNotificationConn for hub: ", hub.HubName, "Ticket: ", msg)
+		})
+
+		if err != nil {
+			logger.Default.Error("Error subscribing to NATS:", err)
+			conn.Close()
+			return
+		}
+
+		hub.subscription = sub
+	}
+
 	hub.ProxyNotificationConns[conn] = true
 	logger.Default.Debug("ProxyNotificationConn registered for hub:", hub.HubName)
 	go hub.checkConnection(conn)
@@ -151,6 +188,12 @@ func (hub *NetworkHub) handleUnregisterProxyNotificationConn(ws *ProxyNotificati
 		fmt.Fprintf(conn, helper.BadGatewayResponse)
 		conn.Close()
 		logger.Default.Debug("Incoming client connection unregistered for hub:", hub.HubName)
+	}
+
+	if len(hub.ProxyNotificationConns) == 0 && hub.subscription != nil {
+		hub.subscription.Unsubscribe()
+		hub.subscription = nil
+		logger.Default.Debug("Unsubscribed from NATS for hub:", hub.HubName)
 	}
 }
 
@@ -172,6 +215,60 @@ func (hub *NetworkHub) handleServerRequest(request *request) {
 }
 
 func (hub *NetworkHub) handleIncomingClientConn(remoteConn *helper.RemoteConn) {
+	ticket := hub.tickerManager.generate()
+	publicIP := helper.GetPublicIP()
+	msg := publicIP + ":" + ticket
+	hub.incomingClientConns[ticket] = remoteConn
+
+	if len(hub.ProxyNotificationConns) == 0 {
+		mng, err := subscriptions.GetSubscriptionManager()
+		if err != nil {
+			logger.Default.Error("Error getting SubscriptionManager:", err)
+			_, _ = remoteConn.Write([]byte(helper.BadGatewayResponse))
+			remoteConn.Close()
+			return
+		}
+
+		mng.Publish(hub.HubName, []byte(msg))
+		return
+	}
+
+	ws := hub.getProxyNotificationConn()
+	if ws == nil {
+		logger.Default.Error("No ProxyNotificationConns available for hub:", hub.HubName)
+		_, _ = remoteConn.Write([]byte(helper.BadGatewayResponse))
+		remoteConn.Close()
+		return
+	}
+
+	_, err := ws.Write([]byte(msg + "\n"))
+	if err != nil {
+		logger.Default.Error("Error writing ticket to ProxyNotificationConn:", err)
+		_, _ = remoteConn.Write([]byte(helper.BadGatewayResponse))
+		remoteConn.Close()
+		delete(hub.incomingClientConns, ticket)
+	}
+	logger.Default.Debug("Ticket sent to ProxyNotificationConn for hub:", hub.HubName, "Ticket:", ticket)
+}
+
+func (hub *NetworkHub) getProxyNotificationConn() *ProxyNotificationConn {
+	conns := make([]*ProxyNotificationConn, 0, len(hub.ProxyNotificationConns))
+	for key := range hub.ProxyNotificationConns {
+		conns = append(conns, key)
+	}
+
+	if len(conns) == 0 {
+		return nil
+	}
+
+	if len(conns) == 1 {
+		return conns[0]
+	}
+
+	return conns[int(rng.Next()%uint32(len(conns)))]
+}
+
+func (hub *NetworkHub) handleIncomingClientConn2(remoteConn *helper.RemoteConn) {
 	if len(hub.ProxyNotificationConns) == 0 {
 		logger.Default.Error("No ProxyNotificationConns available for hub:", hub.HubName)
 		_, _ = remoteConn.Write([]byte(helper.BadGatewayResponse))

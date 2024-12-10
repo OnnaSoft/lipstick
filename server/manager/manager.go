@@ -160,8 +160,8 @@ func (manager *Manager) HandleHTTPConn(conn net.Conn, req *http.Request) {
 	}
 
 	logger.Default.Debug("Handling HTTP connection for domain:", domain)
-	if remoteConn, ok := conn.(helper.RemoteConn); ok {
-		hub.incomingClientConn <- &remoteConn
+	if remoteConn, ok := conn.(*helper.RemoteConn); ok {
+		hub.incomingClientConn <- remoteConn
 		return
 	}
 
@@ -192,8 +192,8 @@ func (manager *Manager) HandleTCPConn(conn net.Conn) {
 	}
 
 	logger.Default.Debug("Handling TCP connection for domain:", domain)
-	if remoteConn, ok := conn.(helper.RemoteConn); ok {
-		hub.incomingClientConn <- &remoteConn
+	if remoteConn, ok := conn.(*helper.RemoteConn); ok {
+		hub.incomingClientConn <- remoteConn
 		return
 	}
 
